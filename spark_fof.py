@@ -188,7 +188,7 @@ def partition_particles(particles, domain_containers, tau):
 
     n_levels = domain_containers[0].N
 
-    trans = np.array([[1, 1], [-1, -1]])
+    trans = np.array([[-tau, 0], [0,-tau], [-tau,-tau]])
 
     for p in particles:
         my_bin = get_bin(p.x, p.y, 2**n_levels, [-1, -1], [1, 1])
@@ -196,30 +196,15 @@ def partition_particles(particles, domain_containers, tau):
         my_rect = domain_containers[my_bin]
 
         if my_rect.in_buffer_zone(p):
-            limits = [list(my_rect.maxes)] + [list(my_rect.mins)]
-
             # particle coordinates in single array
             coords = np.array((p.x, p.y))
-
-            # get a matrix with distances from all edges
-            x = (np.abs([coords - lim for lim in limits]) < tau) * tau
-
-            # if there are nonzero elements, we need to have multiple copies of
-            # this particle
-            if np.any(x):
-                # the second row are the minimums, i.e. will shif axes to the
-                # right/up
-                x[1:] *= -1
-                rows, cols = x.nonzero()
-
-                # go through the nonzero rows
-                for row, col in zip(rows, cols):
-                    new_coords = np.copy(coords)
-                    new_coords[col] += x[row, col]
-                    new_bin = get_bin(*(new_coords), nbins=2 **
-                                      n_levels, mins=[-1, -1], maxs=[1, 1])
-                    print coords, x, new_bin, p
-                    yield (new_bin, p)
+            # iterate through the transformations
+  	        for t in trans: 
+		        new_coords = coords + t
+		        trans_bin = get_bin(new_coords[0], new_coords[1], 2**N, [-1,-1],[1,1])
+		        print p.pid, my_rect.in_buffer_zone(p), coords, new_coords, my_bin, trans_bin
+		        if new_bin != my_bin: 
+                	yield (new_bin, p)
         yield (my_bin, p)
 
 
@@ -306,7 +291,7 @@ class DomainRectangle(Rectangle):
 
         self.tau = tau
 
-        self.bufferRectangle = Rectangle(self.mins + tau, self.maxes - tau)
+        self.bufferRectangle = Rectangle(self.mins + tau, self.maxes)
 
     def __repr__(self):
         return "<DomainRectangle %s>" % list(zip(self.mins, self.maxes))
