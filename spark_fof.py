@@ -42,9 +42,9 @@ class FOFAnalyzer():
         sc = self.sc
 
         pg_map = (particle_rdd.mapPartitionsWithIndex(
-        		  lambda index, data: get_buffer_particles(index,
-        		  										   data,
-        		  										   domain_containers, level))
+                  lambda index, data: get_buffer_particles(index,
+                                                           data,
+                                                           domain_containers, level))
                   .map(pid_gid)
                   .collectAsMap())
 
@@ -186,12 +186,12 @@ class Particle:
 def partition_particles(particles, domain_containers, tau):
     """Copy particles in buffer areas to the partitions that will need them"""
 
-    n_levels = domain_containers[0].N
+    N = domain_containers[0].N
 
     trans = np.array([[-tau, 0], [0,-tau], [-tau,-tau]])
 
     for p in particles:
-        my_bin = get_bin(p.x, p.y, 2**n_levels, [-1, -1], [1, 1])
+        my_bin = get_bin(p.x, p.y, 2**N, [-1, -1], [1, 1])
 
         my_rect = domain_containers[my_bin]
 
@@ -199,12 +199,12 @@ def partition_particles(particles, domain_containers, tau):
             # particle coordinates in single array
             coords = np.array((p.x, p.y))
             # iterate through the transformations
-  	        for t in trans: 
-		        new_coords = coords + t
-		        trans_bin = get_bin(new_coords[0], new_coords[1], 2**N, [-1,-1],[1,1])
-		        print p.pid, my_rect.in_buffer_zone(p), coords, new_coords, my_bin, trans_bin
-		        if new_bin != my_bin: 
-                	yield (new_bin, p)
+            for t in trans: 
+                new_coords = coords + t
+                trans_bin = get_bin(new_coords[0], new_coords[1], 2**N, [-1,-1],[1,1])
+                print p.pid, my_rect.in_buffer_zone(p), coords, new_coords, my_bin, trans_bin
+                if trans_bin != my_bin: 
+                    yield (trans_bin, p)
         yield (my_bin, p)
 
 
