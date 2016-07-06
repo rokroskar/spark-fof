@@ -3,11 +3,16 @@ from Cython.Build import cythonize
 from distutils.extension import Extension
 import numpy 
 
+import os
+
+currdir = os.getcwd()
+
 setup(
     ext_modules = cythonize([Extension("spark_fof", ["spark_fof_c.pyx"], include_dirs=[numpy.get_include()]),
     						 Extension("fof", 
     								   ["fof/fof.pyx"],
     								   libraries=['kd'],
-    								   extra_compile_args=['-I', '/Users/rokstar/projects/spark-fof/fof'],
-    								   extra_link_args=['-L','/Users/rokstar/projects/spark-fof/fof'])])
+    								   extra_compile_args=['-I', currdir+'/fof'],
+    								   extra_link_args=['-L',currdir+'/fof'],
+                                       include_dirs=[numpy.get_include()])])
 )

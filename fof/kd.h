@@ -189,7 +189,6 @@ void kdOrder(KD);
 void kdOutGroup(KD,char *);
 void kdFinish(KD);
 
-int foo(int);
 
 #endif
 

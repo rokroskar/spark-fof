@@ -182,8 +182,14 @@ void kdUpPass(KD kd,int iCell)
 void kdBuildTree(KD kd)
 {
 	int l,n,i,d,m,j,diff;
+    PARTICLE mypart;
 	KDN *c;
 	BND bnd;
+
+    for (i=0;i<10;i++){
+        mypart = kd->p[i];
+        fprintf(stderr, "%f %f %f %d\n", mypart.r[0], mypart.r[1], mypart.r[2], mypart.iOrder);
+    }
 
 	n = kd->nActive;
 	kd->nLevels = 1;
@@ -441,9 +447,3 @@ void kdFinish(KD kd)
 	free(kd->kdNodes);
 	free(kd);
 	}
-
-int foo(int x)
-{
-	return x;
-}
-
