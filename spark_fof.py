@@ -6,28 +6,39 @@ import networkx as nx
 from spark_util import spark_cython
 
 # particle data type definition
-pdt = np.dtype([('x','f4'), ('y','f4'), ('pid', 'i8'), ('gid', 'i8')])
+pdt = np.dtype([('pos','f4', 3), ('iGroup', 'i4'), ('iOrder', 'i4')])
 
 # encode a 32-bit partition ID (pid) and 32-bit cluster ID (cid) into one 64-bit integer
-encode_gid = lambda pid, cid: np.int64(int(np.binary_repr(pid,width=32)+np.binary_repr(cid,width=32),2))
+def encode_gid(pid, cid, bits=32):
+    if bits == 32: 
+        res = np.int64(int(np.binary_repr(pid,width=32)+np.binary_repr(cid,width=32),2))
+    elif bits == 16:
+        res = np.int32(int(np.binary_repr(pid,width=16)+np.binary_repr(cid,width=16),2))
+    else: 
+        raise RuntimeError('Group encoding must use either 16 or 32 bit integers')
+    return res
 
 # decode a two-part 64-bit integer into a 32-bit partition ID (pid) and 32-bit cluster ID (cid)
-def decode_gid(gid):
-    pid = gid >> 32
-    cid = gid - (pid << 32)
+def decode_gid(gid, bits = 32):
+    if (bits is not 32) and (bits is not 16): 
+        raise RuntimeError('Group encoding must use either 16 or 32 bit integers')
+    pid = gid >> bits
+    cid = gid - (pid << bits)
     return pid,cid
+
 
 # define wrapped cython functions
 get_bin_cython = spark_cython('spark_fof_c', 'get_bin_cython')
 get_particle_bins_cython = spark_cython('spark_fof_c', 'get_particle_bins_cython')
 
+run_fof = spark_cython('fof', 'run')
 
 class FOFAnalyzer():
     def __init__(self, sc, N, tau, particle_rdd):
         self.sc = sc
         self.N = N
         self.tau = tau
-        self.domain_containers = setup_domain(N, tau)
+        self.domain_containers = setup_domain(N, tau, [1,1,1], [-1,-1,-1])
 
         self.particle_rdd = particle_rdd
 
@@ -160,8 +171,8 @@ class FOFAnalyzer():
         return particle_rdd
 
 
-def setup_domain(N, tau):
-    D = DomainRectangle([1, 1], [-1, -1], tau=tau)
+def setup_domain(N, tau, maxes, mins):
+    D = DomainRectangle(maxes, mins, tau=tau)
     domain_containers = D.split_domain(max_N=N)
     for r in domain_containers:
         r.bin = get_rectangle_bin(r, D.mins, D.maxes, 2**N)
@@ -206,39 +217,40 @@ def partition_particles(particles, domain_containers, tau):
 
     N = domain_containers[0].N
 
-    trans = np.array([[-tau, 0], [0,-tau], [-tau,-tau]])
+    trans = np.array([[-tau, 0, 0], [0,-tau, 0], [0, 0, -tau], [-tau, -tau, 0], [0, -tau, -tau], [-tau,-tau,-tau]])
 
     for p in particles:
-        my_bin = get_bin_cython(p['x'], p['y'], 2**N, -1, -1, 1, 1)
+        x,y,z = p['pos']
+        my_bin = get_bin_cython(x, y, z, 2**N, -1, -1, -1, 1, 1, 1)
 
         my_rect = domain_containers[my_bin]
 
         if my_rect.in_buffer_zone(p):
             # particle coordinates in single array
-            coords = np.array((p['x'], p['y']))
+            coords = np.copy(p['pos'][:3])
             # iterate through the transformations
             for t in trans: 
                 new_coords = coords + t
-                trans_bin = get_bin(new_coords[0], new_coords[1], 2**N, [-1,-1],[1,1])
+                trans_bin = get_bin_cython(new_coords[0], new_coords[1], new_coords[2], 2**N, -1,-1,-1,1,1,1)
                 if trans_bin != my_bin: 
                     yield (trans_bin, p)
         yield (my_bin, p)
 
 
-def get_bin(px, py, nbins, mins, maxs):
-    minx, miny = mins
-    maxx, maxy = maxs
+def get_bin(px, py, pz, nbins, mins, maxs):
+    minx, miny, minz = mins
+    maxx, maxy, maxz = maxs
 
-    if not all([minx <= px <= maxx, miny <= py <= maxy]):
+    if not all([minx <= px <= maxx, miny <= py <= maxy, minz <= pz <= maxz]):
         return -1
 
     dx = (maxx - minx) / float(nbins)
     dy = (maxy - miny) / float(nbins)
-  #  dz = (p_maxs['z'] - p_mins['z'])/float(nbins)
+    dz = (maxz - minz) / float(nbins)
     xbin = floor((px - minx) / dx)
     ybin = floor((py - miny) / dy)
- #   zbin = floor((p['z'] + 1)/dz)
-    return int(xbin + ybin * nbins)  # + zbin*nbins*nbins)
+    zbin = floor((pz - minz) / dz)
+    return int(xbin + ybin*nbins + zbin*nbins*nbins)
 
 
 def flatten(S):
@@ -252,7 +264,7 @@ def flatten(S):
 def get_rectangle_bin(rec, mins, maxs, nbins):
     # take the midpoint of the rectangle
     point = rec.mins + (rec.maxes - rec.mins) / 2.
-    return get_bin(point[0], point[1], nbins, mins, maxs)
+    return get_bin(point[0], point[1], point[2], nbins, mins, maxs)
 
 
 def get_buffer_particles(partition, particles, domain_containers, level=0):
@@ -270,25 +282,25 @@ def get_buffer_particles(partition, particles, domain_containers, level=0):
 
 def pid_gid(p):
     """Map the particle to its pid and gid"""
-    return (p['pid'], p['gid'])
+    return (p['iOrder'], p['iGroup'])
 
 
 def remap_gid(p, gid_map):
     """Remap gid if it exists in the map"""
-    if p['gid'] in gid_map.keys():
+    if p['iGroup'] in gid_map.keys():
         p_c = np.copy(p)
-        p_c['gid'] = gid_map[p['gid']]
+        p_c['iGroup'] = gid_map[p['iGroup']]
         return p_c
     else: 
         return p
 
 def remap_gid_partition(particles, gid_map):
     p_arr = np.fromiter(particles, pdt)
-    groups = np.unique(p_arr['gid'])
+    groups = np.unique(p_arr['iGroup'])
     for g in groups:
-        inds = np.where(p_arr['gid'] == g)
+        inds = np.where(p_arr['iGroup'] == g)
         if g in gid_map.keys():
-            p_arr['gid'][inds] = gid_map[g]
+            p_arr['iGroup'][inds] = gid_map[g]
     return p_arr
 
 
@@ -385,7 +397,9 @@ class DomainRectangle(Rectangle):
 
     def in_buffer_zone(self, p):
         """Determine whether a particle is in the buffer zone"""
-        in_main = bool(not self.min_distance_point((p['x'], p['y'])))
+        x,y,z = p['pos']
+
+        in_main = bool(not self.min_distance_point((x, y, z)))
         in_buffer = bool(
-            not self.bufferRectangle.min_distance_point((p['x'], p['y'])))
+            not self.bufferRectangle.min_distance_point((x, y, z)))
         return (in_main != in_buffer)

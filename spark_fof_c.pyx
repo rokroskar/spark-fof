@@ -12,18 +12,20 @@ ctypedef np.int_t DTYPE_i
 @cython.wraparound(False)
 @cython.nonecheck(False)
 @cython.cdivision(True)
-def get_bin_cython(float px, float py, int nbins, float minx, 
-                   float miny, float maxx, float maxy):
+def get_bin_cython(float px, float py, float pz, int nbins, float minx, 
+                   float miny, float minz, float maxx, float maxy, float maxz):
     #if not all([minx <= px <= maxx, miny <= py <= maxy]):
-    cdef float dx, dy, xbin, ybin
-    if not (px >= minx and px <= maxx and py >= miny and py <= maxy):
+    cdef float dx, dy, dz, xbin, ybin, zbin
+    if not (px >= minx and px <= maxx and py >= miny and py <= maxy and pz >= minz and pz <= maxz):
         return -1
 
     dx = (maxx - minx) / <float>nbins
     dy = (maxy - miny) / <float>nbins
+    dz = (maxz - minz) / <float>nbins
     xbin = floor((px - minx) / dx)
     ybin = floor((py - miny) / dy)
-    return <int>(xbin + ybin * nbins)  # + zbin*nbins*nbins)
+    zbin = floor((pz - minz) / dz)
+    return <int>(xbin + ybin * nbins + zbin*nbins*nbins)
 
 @cython.boundscheck(False)
 @cython.wraparound(False)

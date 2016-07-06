@@ -8,7 +8,7 @@ import os
 currdir = os.getcwd()
 
 setup(
-    ext_modules = cythonize([Extension("spark_fof", ["spark_fof_c.pyx"], include_dirs=[numpy.get_include()]),
+    ext_modules = cythonize([Extension("spark_fof_c", ["spark_fof_c.pyx"], include_dirs=[numpy.get_include()]),
     						 Extension("fof", 
     								   ["fof/fof.pyx"],
     								   libraries=['kd'],
