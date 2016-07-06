@@ -59,9 +59,9 @@ cpdef run(np.ndarray[cfof.PARTICLE] particles, float fEps):
     cdef int nGroup 
     cdef int sec, usec
     cdef int nMembers = 8
-    fPeriod[0] = 1
-    fPeriod[1] = 1
-    fPeriod[2] = 1
+    fPeriod[0] = 2
+    fPeriod[1] = 2
+    fPeriod[2] = 2
 
     # initialize
     kdInit(&kd, nBucket, fPeriod)

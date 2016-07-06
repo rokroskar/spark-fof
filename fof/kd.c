@@ -185,12 +185,7 @@ void kdBuildTree(KD kd)
     PARTICLE mypart;
 	KDN *c;
 	BND bnd;
-
-    for (i=0;i<10;i++){
-        mypart = kd->p[i];
-        fprintf(stderr, "%f %f %f %d\n", mypart.r[0], mypart.r[1], mypart.r[2], mypart.iOrder);
-    }
-
+    
 	n = kd->nActive;
 	kd->nLevels = 1;
 	l = 1;
