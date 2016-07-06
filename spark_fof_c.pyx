@@ -6,6 +6,7 @@ cimport numpy as np
 DTYPE = np.float
 
 ctypedef np.float_t DTYPE_f
+ctypedef np.int_t DTYPE_i
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -28,7 +29,7 @@ def get_bin_cython(float px, float py, int nbins, float minx,
 @cython.wraparound(False)
 @cython.nonecheck(False)
 @cython.cdivision(True)
-def get_particle_bins_cython(np.ndarray[DTYPE_f] xs, np.ndarray[DTYPE_f] ys, np.ndarray[DTYPE_f] bins): 
+def get_particle_bins_cython(np.ndarray[DTYPE_f] xs, np.ndarray[DTYPE_f] ys, np.ndarray[DTYPE_i] bins): 
     cdef int n = xs.shape[0]
     for i in range(n): 
         bins[i] = get_bin_cython(xs[i], ys[i], 100, -1,-1,1,1)

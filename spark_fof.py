@@ -3,6 +3,23 @@ import numpy as np
 from math import floor, ceil
 from functools import total_ordering
 import networkx as nx
+from spark_util import spark_cython
+
+# particle data type definition
+pdt = np.dtype([('x','f4'), ('y','f4'), ('pid', 'i8'), ('gid', 'i8')])
+
+# encode a 32-bit partition ID (pid) and 32-bit cluster ID (cid) into one 64-bit integer
+encode_gid = lambda pid, cid: np.int64(int(np.binary_repr(pid,width=32)+np.binary_repr(cid,width=32),2))
+
+# decode a two-part 64-bit integer into a 32-bit partition ID (pid) and 32-bit cluster ID (cid)
+def decode_gid(gid):
+    pid = gid >> 32
+    cid = gid - (pid << 32)
+    return pid,cid
+
+# define wrapped cython functions
+get_bin_cython = spark_cython('spark_fof_c', 'get_bin_cython')
+get_particle_bins_cython = spark_cython('spark_fof_c', 'get_particle_bins_cython')
 
 
 class FOFAnalyzer():
@@ -137,7 +154,8 @@ class FOFAnalyzer():
 
         for l in range(level, -1, -1):
             m = self.get_level_map(l)
-            particle_rdd = particle_rdd.map(lambda p: remap_gid(p, m))
+            m_b = self.sc.broadcast(m)
+            particle_rdd = particle_rdd.mapPartitions(lambda particles: remap_gid_partition(particles, m_b.value))
 
         return particle_rdd
 
@@ -191,18 +209,17 @@ def partition_particles(particles, domain_containers, tau):
     trans = np.array([[-tau, 0], [0,-tau], [-tau,-tau]])
 
     for p in particles:
-        my_bin = get_bin(p.x, p.y, 2**N, [-1, -1], [1, 1])
+        my_bin = get_bin_cython(p['x'], p['y'], 2**N, -1, -1, 1, 1)
 
         my_rect = domain_containers[my_bin]
 
         if my_rect.in_buffer_zone(p):
             # particle coordinates in single array
-            coords = np.array((p.x, p.y))
+            coords = np.array((p['x'], p['y']))
             # iterate through the transformations
             for t in trans: 
                 new_coords = coords + t
                 trans_bin = get_bin(new_coords[0], new_coords[1], 2**N, [-1,-1],[1,1])
-                print p.pid, my_rect.in_buffer_zone(p), coords, new_coords, my_bin, trans_bin
                 if trans_bin != my_bin: 
                     yield (trans_bin, p)
         yield (my_bin, p)
@@ -253,21 +270,33 @@ def get_buffer_particles(partition, particles, domain_containers, level=0):
 
 def pid_gid(p):
     """Map the particle to its pid and gid"""
-    return (p.pid, p.gid)
+    return (p['pid'], p['gid'])
 
 
 def remap_gid(p, gid_map):
     """Remap gid if it exists in the map"""
-    if p.gid in gid_map.keys():
-        p.gid = gid_map[p.gid]
-    return p
+    if p['gid'] in gid_map.keys():
+        p_c = np.copy(p)
+        p_c['gid'] = gid_map[p['gid']]
+        return p_c
+    else: 
+        return p
+
+def remap_gid_partition(particles, gid_map):
+    p_arr = np.fromiter(particles, pdt)
+    groups = np.unique(p_arr['gid'])
+    for g in groups:
+        inds = np.where(p_arr['gid'] == g)
+        if g in gid_map.keys():
+            p_arr['gid'][inds] = gid_map[g]
+    return p_arr
 
 
 def set_local_group(partition, particles):
     """Set an initial partition for the group ID"""
-    for p in particles:
-        p.gid.partition = partition
-        yield p
+    p_arr = np.fromiter(particles, pdt)
+    p_arr['gid'] = encode_gid(partition, 0)
+    return iter(p_arr)
 
 
 #################
@@ -356,7 +385,7 @@ class DomainRectangle(Rectangle):
 
     def in_buffer_zone(self, p):
         """Determine whether a particle is in the buffer zone"""
-        in_main = bool(not self.min_distance_point((p.x, p.y)))
+        in_main = bool(not self.min_distance_point((p['x'], p['y'])))
         in_buffer = bool(
-            not self.bufferRectangle.min_distance_point((p.x, p.y)))
+            not self.bufferRectangle.min_distance_point((p['x'], p['y'])))
         return (in_main != in_buffer)
