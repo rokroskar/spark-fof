@@ -3,8 +3,13 @@
 /* BEGIN: Cython Metadata
 {
     "distutils": {
-        "depends": [
-            "kd.h"
+        "extra_compile_args": [
+            "-I", 
+            "/Users/rokstar/projects/spark-fof/fof"
+        ], 
+        "extra_link_args": [
+            "-L", 
+            "/Users/rokstar/projects/spark-fof/fof"
         ], 
         "libraries": [
             "kd"
@@ -489,7 +494,7 @@ static const char *__pyx_filename;
 
 
 static const char *__pyx_f[] = {
-  "fof.pyx",
+  "fof/fof.pyx",
 };
 
 /*--- Type declarations ---*/
@@ -587,6 +592,9 @@ static PyObject* __pyx_print = 0;
 static PyObject* __pyx_print_kwargs = 0;
 #endif
 
+/* PrintOne.proto */
+static int __Pyx_PrintOne(PyObject* stream, PyObject *o);
+
 /* CIntToPy.proto */
 static CYTHON_INLINE PyObject* __Pyx_PyInt_From_long(long value);
 
@@ -608,6 +616,7 @@ static int __Pyx_InitStrings(__Pyx_StringTabEntry *t);
 /* Module declarations from 'fof' */
 static PyObject *__pyx_f_3fof_kdInit(KD *, int, float *); /*proto*/
 static PyObject *__pyx_f_3fof_initialize(int __pyx_skip_dispatch); /*proto*/
+static PyObject *__pyx_f_3fof_woop(int __pyx_skip_dispatch); /*proto*/
 #define __Pyx_MODULE_NAME "fof"
 int __pyx_module_is_main_fof = 0;
 
@@ -623,6 +632,7 @@ static PyObject *__pyx_n_s_main;
 static PyObject *__pyx_n_s_print;
 static PyObject *__pyx_n_s_test;
 static PyObject *__pyx_pf_3fof_initialize(CYTHON_UNUSED PyObject *__pyx_self); /* proto */
+static PyObject *__pyx_pf_3fof_2woop(CYTHON_UNUSED PyObject *__pyx_self); /* proto */
 
 /* "fof.pyx":3
  * cimport cfof
@@ -667,7 +677,7 @@ static PyObject *__pyx_f_3fof_kdInit(KD *__pyx_v_kd, int __pyx_v_nBucket, float 
  * 	print nBucket, fPeriod[0]
  * 	cfof.kdInit(kd, nBucket, fPeriod)             # <<<<<<<<<<<<<<
  * 
- * cpdef initialize():
+ * 
  */
   kdInit(__pyx_v_kd, __pyx_v_nBucket, __pyx_v_fPeriod);
 
@@ -694,8 +704,8 @@ static PyObject *__pyx_f_3fof_kdInit(KD *__pyx_v_kd, int __pyx_v_nBucket, float 
   return __pyx_r;
 }
 
-/* "fof.pyx":7
- * 	cfof.kdInit(kd, nBucket, fPeriod)
+/* "fof.pyx":8
+ * 
  * 
  * cpdef initialize():             # <<<<<<<<<<<<<<
  * 	cdef cfof.KD kd
@@ -712,17 +722,17 @@ static PyObject *__pyx_f_3fof_initialize(CYTHON_UNUSED int __pyx_skip_dispatch) 
   PyObject *__pyx_t_1 = NULL;
   __Pyx_RefNannySetupContext("initialize", 0);
 
-  /* "fof.pyx":10
+  /* "fof.pyx":11
  * 	cdef cfof.KD kd
  * 	cdef float fPeriod[3]
  * 	cdef int nBucket = 16             # <<<<<<<<<<<<<<
+ * 	cdef int res
  * 
- * 	fPeriod[0] = 1
  */
   __pyx_v_nBucket = 16;
 
-  /* "fof.pyx":12
- * 	cdef int nBucket = 16
+  /* "fof.pyx":14
+ * 	cdef int res
  * 
  * 	fPeriod[0] = 1             # <<<<<<<<<<<<<<
  * 	fPeriod[1] = 1
@@ -730,7 +740,7 @@ static PyObject *__pyx_f_3fof_initialize(CYTHON_UNUSED int __pyx_skip_dispatch) 
  */
   (__pyx_v_fPeriod[0]) = 1.0;
 
-  /* "fof.pyx":13
+  /* "fof.pyx":15
  * 
  * 	fPeriod[0] = 1
  * 	fPeriod[1] = 1             # <<<<<<<<<<<<<<
@@ -739,7 +749,7 @@ static PyObject *__pyx_f_3fof_initialize(CYTHON_UNUSED int __pyx_skip_dispatch) 
  */
   (__pyx_v_fPeriod[1]) = 1.0;
 
-  /* "fof.pyx":14
+  /* "fof.pyx":16
  * 	fPeriod[0] = 1
  * 	fPeriod[1] = 1
  * 	fPeriod[2] = 1             # <<<<<<<<<<<<<<
@@ -748,17 +758,31 @@ static PyObject *__pyx_f_3fof_initialize(CYTHON_UNUSED int __pyx_skip_dispatch) 
  */
   (__pyx_v_fPeriod[2]) = 1.0;
 
-  /* "fof.pyx":16
+  /* "fof.pyx":18
  * 	fPeriod[2] = 1
  * 
  * 	kdInit(&kd, nBucket, fPeriod)             # <<<<<<<<<<<<<<
+ * 
+ * 	print kd.nBucket
  */
-  __pyx_t_1 = __pyx_f_3fof_kdInit((&__pyx_v_kd), __pyx_v_nBucket, __pyx_v_fPeriod); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 16, __pyx_L1_error)
+  __pyx_t_1 = __pyx_f_3fof_kdInit((&__pyx_v_kd), __pyx_v_nBucket, __pyx_v_fPeriod); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 18, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "fof.pyx":7
- * 	cfof.kdInit(kd, nBucket, fPeriod)
+  /* "fof.pyx":20
+ * 	kdInit(&kd, nBucket, fPeriod)
+ * 
+ * 	print kd.nBucket             # <<<<<<<<<<<<<<
+ * 
+ * 
+ */
+  __pyx_t_1 = __Pyx_PyInt_From_int(__pyx_v_kd->nBucket); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 20, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  if (__Pyx_PrintOne(0, __pyx_t_1) < 0) __PYX_ERR(0, 20, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+
+  /* "fof.pyx":8
+ * 
  * 
  * cpdef initialize():             # <<<<<<<<<<<<<<
  * 	cdef cfof.KD kd
@@ -797,7 +821,7 @@ static PyObject *__pyx_pf_3fof_initialize(CYTHON_UNUSED PyObject *__pyx_self) {
   PyObject *__pyx_t_1 = NULL;
   __Pyx_RefNannySetupContext("initialize", 0);
   __Pyx_XDECREF(__pyx_r);
-  __pyx_t_1 = __pyx_f_3fof_initialize(0); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 7, __pyx_L1_error)
+  __pyx_t_1 = __pyx_f_3fof_initialize(0); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 8, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_r = __pyx_t_1;
   __pyx_t_1 = 0;
@@ -814,8 +838,88 @@ static PyObject *__pyx_pf_3fof_initialize(CYTHON_UNUSED PyObject *__pyx_self) {
   return __pyx_r;
 }
 
+/* "fof.pyx":23
+ * 
+ * 
+ * cpdef woop():             # <<<<<<<<<<<<<<
+ * 	initialize()
+ */
+
+static PyObject *__pyx_pw_3fof_3woop(PyObject *__pyx_self, CYTHON_UNUSED PyObject *unused); /*proto*/
+static PyObject *__pyx_f_3fof_woop(CYTHON_UNUSED int __pyx_skip_dispatch) {
+  PyObject *__pyx_r = NULL;
+  __Pyx_RefNannyDeclarations
+  PyObject *__pyx_t_1 = NULL;
+  __Pyx_RefNannySetupContext("woop", 0);
+
+  /* "fof.pyx":24
+ * 
+ * cpdef woop():
+ * 	initialize()             # <<<<<<<<<<<<<<
+ */
+  __pyx_t_1 = __pyx_f_3fof_initialize(0); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 24, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+
+  /* "fof.pyx":23
+ * 
+ * 
+ * cpdef woop():             # <<<<<<<<<<<<<<
+ * 	initialize()
+ */
+
+  /* function exit code */
+  __pyx_r = Py_None; __Pyx_INCREF(Py_None);
+  goto __pyx_L0;
+  __pyx_L1_error:;
+  __Pyx_XDECREF(__pyx_t_1);
+  __Pyx_AddTraceback("fof.woop", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __pyx_r = 0;
+  __pyx_L0:;
+  __Pyx_XGIVEREF(__pyx_r);
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
+
+/* Python wrapper */
+static PyObject *__pyx_pw_3fof_3woop(PyObject *__pyx_self, CYTHON_UNUSED PyObject *unused); /*proto*/
+static PyObject *__pyx_pw_3fof_3woop(PyObject *__pyx_self, CYTHON_UNUSED PyObject *unused) {
+  PyObject *__pyx_r = 0;
+  __Pyx_RefNannyDeclarations
+  __Pyx_RefNannySetupContext("woop (wrapper)", 0);
+  __pyx_r = __pyx_pf_3fof_2woop(__pyx_self);
+
+  /* function exit code */
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
+
+static PyObject *__pyx_pf_3fof_2woop(CYTHON_UNUSED PyObject *__pyx_self) {
+  PyObject *__pyx_r = NULL;
+  __Pyx_RefNannyDeclarations
+  PyObject *__pyx_t_1 = NULL;
+  __Pyx_RefNannySetupContext("woop", 0);
+  __Pyx_XDECREF(__pyx_r);
+  __pyx_t_1 = __pyx_f_3fof_woop(0); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 23, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_r = __pyx_t_1;
+  __pyx_t_1 = 0;
+  goto __pyx_L0;
+
+  /* function exit code */
+  __pyx_L1_error:;
+  __Pyx_XDECREF(__pyx_t_1);
+  __Pyx_AddTraceback("fof.woop", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __pyx_r = NULL;
+  __pyx_L0:;
+  __Pyx_XGIVEREF(__pyx_r);
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
+
 static PyMethodDef __pyx_methods[] = {
   {"initialize", (PyCFunction)__pyx_pw_3fof_1initialize, METH_NOARGS, 0},
+  {"woop", (PyCFunction)__pyx_pw_3fof_3woop, METH_NOARGS, 0},
   {0, 0, 0, 0}
 };
 
@@ -1296,6 +1400,43 @@ bad:
     if (kwargs != __pyx_print_kwargs)
         Py_XDECREF(kwargs);
     return -1;
+}
+#endif
+
+/* PrintOne */
+#if !CYTHON_COMPILING_IN_PYPY && PY_MAJOR_VERSION < 3
+static int __Pyx_PrintOne(PyObject* f, PyObject *o) {
+    if (!f) {
+        if (!(f = __Pyx_GetStdout()))
+            return -1;
+    }
+    Py_INCREF(f);
+    if (PyFile_SoftSpace(f, 0)) {
+        if (PyFile_WriteString(" ", f) < 0)
+            goto error;
+    }
+    if (PyFile_WriteObject(o, f, Py_PRINT_RAW) < 0)
+        goto error;
+    if (PyFile_WriteString("\n", f) < 0)
+        goto error;
+    Py_DECREF(f);
+    return 0;
+error:
+    Py_DECREF(f);
+    return -1;
+    /* the line below is just to avoid C compiler
+     * warnings about unused functions */
+    return __Pyx_Print(f, NULL, 0);
+}
+#else
+static int __Pyx_PrintOne(PyObject* stream, PyObject *o) {
+    int res;
+    PyObject* arg_tuple = PyTuple_Pack(1, o);
+    if (unlikely(!arg_tuple))
+        return -1;
+    res = __Pyx_Print(stream, arg_tuple, 1);
+    Py_DECREF(arg_tuple);
+    return res;
 }
 #endif
 

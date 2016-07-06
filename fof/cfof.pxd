@@ -33,7 +33,7 @@ cdef extern from "kd.h":
 		int uSecond
 		int uMicro
 		
-	ctypedef kdContext KD 
+	ctypedef kdContext* KD 
 
 	int kdInit(KD*, int, float*)
 
