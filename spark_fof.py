@@ -30,6 +30,7 @@ def decode_gid(gid, bits = 32):
 # define wrapped cython functions
 get_bin_cython = spark_cython('spark_fof_c', 'get_bin_cython')
 get_particle_bins_cython = spark_cython('spark_fof_c', 'get_particle_bins_cython')
+rect_buffer_zone_cython = spark_cython('spark_fof_c', 'rect_buffer_zone_cython')
 
 run_fof = spark_cython('fof', 'run')
 
@@ -221,20 +222,24 @@ def partition_particles(particles, domain_containers, tau):
 
     for p in particles:
         x,y,z = p['pos']
-        my_bin = get_bin_cython(x, y, z, 2**N, -1, -1, -1, 1, 1, 1)
+        my_bins = []
+        my_bins.append(get_bin_cython(x, y, z, 2**N, -1, -1, -1, 1, 1, 1))
 
-        my_rect = domain_containers[my_bin]
+        my_rect = domain_containers[my_bins[0]]
 
-        if my_rect.in_buffer_zone(p):
+        if rect_buffer_zone_cython(x,y,z,domain_containers):
             # particle coordinates in single array
             coords = np.copy(p['pos'][:3])
             # iterate through the transformations
             for t in trans: 
-                new_coords = coords + t
-                trans_bin = get_bin_cython(new_coords[0], new_coords[1], new_coords[2], 2**N, -1,-1,-1,1,1,1)
-                if trans_bin != my_bin: 
+                x,y,z = coords + t
+                trans_bin = get_bin_cython(x, y, z, 2**N, -1,-1,-1,1,1,1)
+                if trans_bin not in my_bins and trans_bin > 0:
+                    my_bins.append(trans_bin)
                     yield (trans_bin, p)
-        yield (my_bin, p)
+
+        # return the first bin, i.e. the only non-ghost bin
+        yield (my_bins[0], p)
 
 
 def get_bin(px, py, pz, nbins, mins, maxs):
