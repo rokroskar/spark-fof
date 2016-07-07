@@ -220,20 +220,24 @@ def partition_particles(particles, domain_containers, tau):
 
     trans = np.array([[-tau, 0, 0], [0,-tau, 0], [0, 0, -tau], [-tau, -tau, 0], [0, -tau, -tau], [-tau,-tau,-tau]])
 
+    mins = np.array([-1,-1,-1], dtype=np.float)
+    maxs = np.array([1,1,1], dtype=np.float)
+
+
     for p in particles:
-        x,y,z = p['pos']
+        pos = p['pos']
         my_bins = []
-        my_bins.append(get_bin_cython(x, y, z, 2**N, -1, -1, -1, 1, 1, 1))
+        my_bins.append(get_bin_cython(pos, 2**N, mins, maxs))
 
         my_rect = domain_containers[my_bins[0]]
 
-        if rect_buffer_zone_cython(x,y,z,domain_containers):
+        if rect_buffer_zone_cython(pos,domain_containers):
             # particle coordinates in single array
-            coords = np.copy(p['pos'][:3])
+           # coords = np.copy(pos)
             # iterate through the transformations
             for t in trans: 
-                x,y,z = coords + t
-                trans_bin = get_bin_cython(x, y, z, 2**N, -1,-1,-1,1,1,1)
+#                x,y,z = coords + t
+                trans_bin = get_bin_cython(pos+t, 2**N, mins, maxs)
                 if trans_bin not in my_bins and trans_bin > 0:
                     my_bins.append(trans_bin)
                     yield (trans_bin, p)
@@ -269,7 +273,7 @@ def flatten(S):
 def get_rectangle_bin(rec, mins, maxs, nbins):
     # take the midpoint of the rectangle
     point = rec.mins + (rec.maxes - rec.mins) / 2.
-    return get_bin(point[0], point[1], point[2], nbins, mins, maxs)
+    return get_bin_cython(point.astype(np.float32), nbins, mins, maxs)
 
 
 def get_buffer_particles(partition, particles, domain_containers, level=0):
