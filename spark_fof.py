@@ -31,7 +31,7 @@ def decode_gid(gid, bits = 32):
 get_bin_cython = spark_cython('spark_fof_c', 'get_bin_cython')
 get_particle_bins_cython = spark_cython('spark_fof_c', 'get_particle_bins_cython')
 rect_buffer_zone_cython = spark_cython('spark_fof_c', 'rect_buffer_zone_cython')
-
+partition_particles_cython = spark_cython('spark_fof_c', 'partition_particles_cython')
 run_fof = spark_cython('fof', 'run')
 
 class FOFAnalyzer():
@@ -307,7 +307,7 @@ def remap_gid_partition(particles, gid_map):
     p_arr = np.fromiter(particles, pdt)
     groups = np.unique(p_arr['iGroup'])
     for g in groups:
-        inds = np.where(p_arr['iGroup'] == g)
+        inds = np.where(p_arr['iGroup'] == g)[0]
         if g in gid_map.keys():
             p_arr['iGroup'][inds] = gid_map[g]
     return p_arr
