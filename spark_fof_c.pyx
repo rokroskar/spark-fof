@@ -1,3 +1,5 @@
+# cython: profile=True 
+
 from libc.math cimport floor
 import cython
 import numpy as np
@@ -48,22 +50,15 @@ def get_particle_bins_cython(np.ndarray[float, ndim=3] points,
         bins[i] = get_bin_cython(points[i], 100, mins, maxs)
 
 
-def rect_buffer_zone_cython(np.ndarray[float] point, domain_containers):
+def rect_buffer_zone_cython(np.ndarray[float] point, rect):
     """Determine whether a particle is in the buffer zone"""
     cdef bint in_main, in_buffer
-    cdef np.ndarray[DTYPE_f] mins, maxs, mins_buff, maxs_buff, dom_mins, dom_maxs
+    cdef np.ndarray[DTYPE_f] mins, maxs, mins_buff, maxs_buff
     
-    dom_mins = np.array([-1,-1,-1], dtype=np.float)
-    dom_maxs = np.array([1, 1, 1], dtype=np.float)
-
-
-    N = domain_containers[0].N
-    r = domain_containers[get_bin_cython(point, 2**N, dom_mins, dom_maxs)]
-
-    mins = r.mins
-    maxs = r.maxes
-    mins_buff = r.bufferRectangle.mins
-    maxs_buff = r.bufferRectangle.maxes
+    mins = rect.mins
+    maxs = rect.maxes
+    mins_buff = rect.bufferRectangle.mins
+    maxs_buff = rect.bufferRectangle.maxes
     
     in_main = in_rectangle_cython(mins, maxs, point)
     in_buffer = in_rectangle_cython(mins_buff, maxs_buff, point)
@@ -73,7 +68,7 @@ def rect_buffer_zone_cython(np.ndarray[float] point, domain_containers):
 def partition_particles_cython(particles, domain_containers, tau):
     """Copy particles in buffer areas to the partitions that will need them"""
     cdef int N = domain_containers[0].N
-    cdef int nparts 
+    cdef int nparts, i
 
     p_arr = np.fromiter(particles, pdt)
     nparts = len(p_arr)
@@ -90,7 +85,7 @@ def partition_particles_cython(particles, domain_containers, tau):
 
         my_rect = domain_containers[my_bins[0]]
 
-        if rect_buffer_zone_cython(point, domain_containers):
+        if rect_buffer_zone_cython(point, my_rect):
             # particle coordinates in single array
             coords = np.copy(point)
             # iterate through the transformations
@@ -104,14 +99,16 @@ def partition_particles_cython(particles, domain_containers, tau):
         # return the first bin, i.e. the only non-ghost bin
         yield (my_bins[0], p_arr[i])
 
+
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.nonecheck(False)
 @cython.cdivision(True)
-def in_rectangle_cython(np.ndarray[DTYPE_f] mins, np.ndarray[DTYPE_f] maxs, np.ndarray[float] point):
+cpdef in_rectangle_cython(np.ndarray[DTYPE_f] mins, np.ndarray[DTYPE_f] maxs, np.ndarray[float] point):
     cdef float size
     cdef bint res=1
+    cdef int i
+
     for i in range(3): 
-        size = maxs[i] - mins[i]
-        res *= ((mins[i] - point[i]) < size)
+        res *= mins[i] < point[i] < maxs[i]
     return res

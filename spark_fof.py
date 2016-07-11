@@ -87,14 +87,17 @@ class FOFAnalyzer():
         # 3. from each group list, generate a (g, g') key, value pair RDD where
         # g maps onto g'
 
+        pg_map_keys = pg_map_b.value.keys()
+
         groups_map = (particle_rdd.map(pid_gid)
-                                  .filter(lambda (pid, gid): pid in pg_map_b.value.keys())
+                                  .filter(lambda (pid, gid): pid in pg_map_keys)
                                   .aggregateByKey([], lambda l, g: l + [g], lambda a, b: sorted(a + b))
                                   .values()
                                   .flatMap(lambda gs: [(g, gs[0]) for g in gs[1:]])).collect()
 
         return groups_map
 
+ 
     def get_level_map(self, level=0):
         """Produce a group re-mapping across sub-domains. Connected groups are obtained by finding
         groups belonging to the same particles and linking them into a graph. Each node in a 
@@ -406,9 +409,4 @@ class DomainRectangle(Rectangle):
 
     def in_buffer_zone(self, p):
         """Determine whether a particle is in the buffer zone"""
-        x,y,z = p['pos']
-
-        in_main = bool(not self.min_distance_point((x, y, z)))
-        in_buffer = bool(
-            not self.bufferRectangle.min_distance_point((x, y, z)))
-        return (in_main != in_buffer)
+        return rect_buffer_zone_cython(p['pos'], self)
