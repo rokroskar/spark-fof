@@ -4,9 +4,24 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <assert.h>
+#include <rpc/types.h>
+#include <rpc/xdr.h>
 #include "kd.h"
 #include "tipsydefs.h"
 
+int xdrHeader(XDR *pxdrs,struct dump *ph)
+{
+	int pad = 0;
+	
+	if (!xdr_double(pxdrs,&ph->time)) return 0;
+	if (!xdr_int(pxdrs,&ph->nbodies)) return 0;
+	if (!xdr_int(pxdrs,&ph->ndim)) return 0;
+	if (!xdr_int(pxdrs,&ph->nsph)) return 0;
+	if (!xdr_int(pxdrs,&ph->ndark)) return 0;
+	if (!xdr_int(pxdrs,&ph->nstar)) return 0;
+	if (!xdr_int(pxdrs,&pad)) return 0;
+	return 1;
+	}
 
 void kdTime(KD kd,int *puSecond,int *puMicro)
 {
@@ -24,7 +39,7 @@ void kdTime(KD kd,int *puSecond,int *puMicro)
 	}
 
 
-int kdInit(KD *pkd,int nBucket,float *fPeriod)
+int kdInit(KD *pkd,int nBucket,float *fPeriod,float *fCenter)
 {
 	KD kd;
 	int j;
@@ -32,7 +47,10 @@ int kdInit(KD *pkd,int nBucket,float *fPeriod)
 	kd = (KD)malloc(sizeof(struct kdContext));
 	assert(kd != NULL);
 	kd->nBucket = nBucket;
-	for (j=0;j<3;++j) kd->fPeriod[j] = fPeriod[j];
+	for (j=0;j<3;++j) {
+		kd->fPeriod[j] = fPeriod[j];
+		kd->fCenter[j] = fCenter[j];
+		}
 	kd->p = NULL;
 	kd->kdNodes = NULL;
 	*pkd = kd;
@@ -40,15 +58,23 @@ int kdInit(KD *pkd,int nBucket,float *fPeriod)
 	}
 
 
-void kdReadTipsy(KD kd,FILE *fp,int bDark,int bGas,int bStar)
+void kdReadTipsy(KD kd,FILE *fp,int bDark,int bGas,int bStar,int bStandard)
 {
 	int i,j,nCnt;
 	struct dump h;
 	struct gas_particle gp;
 	struct dark_particle dp;
 	struct star_particle sp;
+	XDR xdrs;
 
-	fread(&h,sizeof(struct dump),1,fp);
+	if (bStandard) {
+	    assert(sizeof(Real)==sizeof(float)); /* Otherwise, this XDR stuff
+						    ain't gonna work */
+	    xdrstdio_create(&xdrs, fp, XDR_DECODE);
+	    xdrHeader(&xdrs,&h);
+	} else {
+	    fread(&h,sizeof(struct dump),1,fp);
+	}
 	kd->nParticles = h.nbodies;
 	kd->nDark = h.ndark;
 	kd->nGas = h.nsph;
@@ -71,30 +97,61 @@ void kdReadTipsy(KD kd,FILE *fp,int bDark,int bGas,int bStar)
 	 */
 	nCnt = 0;
 	for (i=0;i<h.nsph;++i) {
-		fread(&gp,sizeof(struct gas_particle),1,fp);
+		if (bStandard) {
+			xdr_vector(&xdrs, (char *) &gp,
+				   sizeof(struct gas_particle)/sizeof(Real),
+				   sizeof(Real), xdr_float);
+		} else {
+			fread(&gp,sizeof(struct gas_particle),1,fp);
+		}
 		if (bGas) {
 			kd->p[nCnt].iOrder = nCnt;
 			for (j=0;j<3;++j) kd->p[nCnt].r[j] = gp.pos[j];
+#ifdef RCMVCM
+			kd->p[nCnt].fMass = gp.mass;
+			for (j=0;j<3;++j) kd->p[nCnt].v[j] = gp.vel[j];
+#endif
 			++nCnt;
-			}
 		}
+	}
 	for (i=0;i<h.ndark;++i) {
-		fread(&dp,sizeof(struct dark_particle),1,fp);
+		if (bStandard) {
+			xdr_vector(&xdrs, (char *) &dp,
+				   sizeof(struct dark_particle)/sizeof(Real),
+				   sizeof(Real), xdr_float);
+		} else {
+		    fread(&dp,sizeof(struct dark_particle),1,fp);
+		}
 		if (bDark) {
 			kd->p[nCnt].iOrder = nCnt;
 			for (j=0;j<3;++j) kd->p[nCnt].r[j] = dp.pos[j];
+#ifdef RCMVCM
+			kd->p[nCnt].fMass = dp.mass;
+			for (j=0;j<3;++j) kd->p[nCnt].v[j] = dp.vel[j];
+#endif
 			++nCnt;
-			}
 		}
+	}
 	for (i=0;i<h.nstar;++i) {
-		fread(&sp,sizeof(struct star_particle),1,fp);
+		if (bStandard) {
+			xdr_vector(&xdrs, (char *) &sp,
+				   sizeof(struct star_particle)/sizeof(Real),
+				   sizeof(Real), xdr_float);
+		} else {
+			fread(&sp,sizeof(struct star_particle),1,fp);
+		}
 		if (bStar) {
 			kd->p[nCnt].iOrder = nCnt;
 			for (j=0;j<3;++j) kd->p[nCnt].r[j] = sp.pos[j];
+#ifdef RCMVCM
+			kd->p[nCnt].fMass = sp.mass;
+			for (j=0;j<3;++j) kd->p[nCnt].v[j] = sp.vel[j];
+#endif
 			++nCnt;
-			}
 		}
 	}
+	if (bStandard) xdr_destroy(&xdrs);
+}
 
 
 void kdSelect(KD kd,int d,int k,int l,int r)
@@ -182,10 +239,9 @@ void kdUpPass(KD kd,int iCell)
 void kdBuildTree(KD kd)
 {
 	int l,n,i,d,m,j,diff;
-    PARTICLE mypart;
 	KDN *c;
 	BND bnd;
-    
+
 	n = kd->nActive;
 	kd->nLevels = 1;
 	l = 1;
@@ -436,9 +492,128 @@ void kdOutGroup(KD kd,char *pszFile)
 	}
 
 
+typedef struct GroupStats {
+	double m;
+	double r[3];
+	double v[3];
+	double rel[3];
+	double rm;
+	} GROUP_STAT;
+
+
+void kdOutGTP(KD kd,char *pszFile,int bStandard)
+{
+	FILE *fp;
+	GROUP_STAT *grp;
+	int pi,i,j;
+	struct dump h;
+	struct star_particle sp;
+	double d,d2;
+	XDR xdrs;
+	float fMass=1.0;
+
+	fp = fopen(pszFile,"w");
+	assert(fp != NULL);
+	grp = malloc(kd->nGroup*sizeof(GROUP_STAT));
+	assert(grp != NULL);
+	for (i=1;i<kd->nGroup;++i) {
+		for (j=0;j<3;++j) grp[i].r[j] = 0.0;
+		for (j=0;j<3;++j) grp[i].v[j] = 0.0;
+		grp[i].m = 0.0;
+		grp[i].rm = 0.0;
+		}
+	for (pi=0;pi<kd->nActive;++pi) {
+		i = kd->p[pi].iGroup;
+		if (!i) continue;
+		for (j=0;j<3;++j) {
+		    grp[i].rel[j] = kd->p[pi].r[j];
+			}
+		}
+	for (pi=0;pi<kd->nActive;++pi) {
+		i = kd->p[pi].iGroup;
+		if (!i) continue;
+#ifdef RCMVCM
+		fMass = kd->p[pi].fMass;
+#endif
+		grp[i].m += fMass;
+		for (j=0;j<3;++j) {
+			d = kd->p[pi].r[j] - grp[i].rel[j];
+			if (d > 0.5*kd->fPeriod[j]) d -= kd->fPeriod[j];
+			if (d <= -0.5*kd->fPeriod[j]) d += kd->fPeriod[j];
+			grp[i].r[j] += fMass*d;
+			}
+#ifdef RCMVCM
+		for (j=0;j<3;++j) grp[i].v[j] += fMass*kd->p[pi].v[j];
+#endif
+		}
+	for (i=1;i<kd->nGroup;++i) {
+		for (j=0;j<3;++j) {
+			grp[i].r[j] /= grp[i].m;
+			grp[i].r[j] += grp[i].rel[j];
+			if (grp[i].r[j] > kd->fCenter[j]+0.5*kd->fPeriod[j])
+				grp[i].r[j] -= kd->fPeriod[j];
+			if (grp[i].r[j] <= kd->fCenter[j]-0.5*kd->fPeriod[j])
+				grp[i].r[j] += kd->fPeriod[j];
+			}
+#ifdef RCMVCM
+		for (j=0;j<3;++j) grp[i].v[j] /= grp[i].m;
+#endif
+		}
+	for (pi=0;pi<kd->nActive;++pi) {
+		i = kd->p[pi].iGroup;
+		if (!i) continue;
+		d2 = 0.0;
+		for (j=0;j<3;++j) {
+			 d = kd->p[pi].r[j] - grp[i].r[j]; 
+			 if (d > 0.5*kd->fPeriod[j]) d -= kd->fPeriod[j];
+			 if (d <= -0.5*kd->fPeriod[j]) d += kd->fPeriod[j];
+			 d2 += d*d;
+			 }
+		if (d2 > grp[i].rm) grp[i].rm = d2;
+		}
+	h.time = kd->fTime;
+	h.nbodies = kd->nGroup-1;
+	h.nsph = 0;
+	h.ndark = 0;
+	h.nstar = h.nbodies;
+	h.ndim = 3;
+	
+	if (bStandard) {
+		assert(sizeof(Real)==sizeof(float)); /* Else this XDR stuff
+							ain't gonna work */
+		xdrstdio_create(&xdrs, fp, XDR_ENCODE);
+		xdrHeader(&xdrs,&h);
+	        }
+	else {
+		fwrite(&h,sizeof(struct dump),1,fp);
+	        }
+	for (i=1;i<kd->nGroup;++i) {
+		sp.mass = grp[i].m;
+		for (j=0;j<3;++j) sp.pos[j] = grp[i].r[j];
+		for (j=0;j<3;++j) sp.vel[j] = grp[i].v[j];
+		sp.eps = sqrt(grp[i].rm);
+		sp.tform = kd->fTime;
+		sp.metals = 0.0;
+		sp.phi = 0.0;
+		if (bStandard) {
+			xdr_vector(&xdrs, (char *) &sp,
+				   sizeof(struct star_particle)/sizeof(Real),
+				   sizeof(Real), xdr_float);
+		        }
+		else {
+			fwrite(&sp,sizeof(struct star_particle),1,fp);
+		        }
+		}
+	if (bStandard) xdr_destroy(&xdrs);
+	free(grp);
+	fclose(fp);
+	}
+
+
 void kdFinish(KD kd)
 {
 	free(kd->p);
 	free(kd->kdNodes);
 	free(kd);
 	}
+

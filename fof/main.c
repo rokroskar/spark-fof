@@ -12,21 +12,23 @@ void usage(void)
 	fprintf(stderr,"USAGE:\n");
 	fprintf(stderr,"fof -e <Linking Length>\n");
 	fprintf(stderr,"   [-m <nMinMembers>] [-dgs] [-v]\n");
-	fprintf(stderr,"   [-o <Output Name>] [-p <xyzPeriod>]\n");
+	fprintf(stderr,"   [-o <Output Name>] [-p <xyzPeriod>] [-c <xyzCenter>]\n");
 	fprintf(stderr,"   [-px <xPeriod>] [-py <yPeriod>] [-pz <zPeriod>]\n");
+	fprintf(stderr,"   [-cx <xCenter>] [-cy <yCenter>] [-cz <zCenter>]\n");
+	fprintf(stderr,"   [-std]\n");
 	fprintf(stderr,"Input taken from stdin in tipsy binary format.\n");
 	fprintf(stderr,"SEE MAN PAGE: fof(1) for more information.\n");
 	exit(1);
 	}
 
-int main(int argc,char **argv)
+void main(int argc,char **argv)
 {
 	KD kd;
 	int nBucket,i,j;
-	char ach[80];
-	float fPeriod[3],fEps;
+	char ach[80],tmp[80];
+	float fPeriod[3],fCenter[3],fEps;
 	int bDark,bGas,bStar;
-	int nMembers,nGroup,bVerbose;
+	int nMembers,nGroup,bVerbose,bStandard;
 	int sec,usec;
 	char *p;
 	
@@ -36,9 +38,13 @@ int main(int argc,char **argv)
 	bGas = 1;
 	bStar = 1;
 	bVerbose = 0;
+	bStandard = 0;
 	strcpy(ach,"fof");
 	i = 1;
-	for (j=0;j<3;++j) fPeriod[j] = HUGE;
+	for (j=0;j<3;++j) {
+		fPeriod[j] = HUGE;
+		fCenter[j] = 0.0;
+		}
 	while (i < argc) {
 		if (!strcmp(argv[i],"-e")) {
 			++i;
@@ -77,10 +83,40 @@ int main(int argc,char **argv)
 		    fPeriod[2] = atof(argv[i]);
 			++i;
 			}
+		else if (!strcmp(argv[i],"-c")) {
+			++i;
+			if (i >= argc) usage();
+			fCenter[0] = atof(argv[i]);
+			fCenter[1] = atof(argv[i]);
+			fCenter[2] = atof(argv[i]);
+			++i;
+			}
+		else if (!strcmp(argv[i],"-cx")) {
+			++i;
+			if (i >= argc) usage();
+			fCenter[0] = atof(argv[i]);
+			++i;
+			}
+		else if (!strcmp(argv[i],"-cy")) {
+			++i;
+			if (i >= argc) usage();
+			fCenter[1] = atof(argv[i]);
+			++i;
+			}
+		else if (!strcmp(argv[i],"-cz")) {
+			++i;
+			if (i >= argc) usage();
+		    fCenter[2] = atof(argv[i]);
+			++i;
+			}
 		else if (!strcmp(argv[i],"-v")) {
 			bVerbose = 1;
 			++i;
 			}
+		else if (!strcmp(argv[i],"-std")) {
+		        bStandard = 1;
+			++i;
+		        }
 		else if (*argv[i] == '-') {
 			p = argv[i];
 			++p;
@@ -110,8 +146,8 @@ int main(int argc,char **argv)
 			}
 		else usage();
 		}
-	kdInit(&kd,nBucket,fPeriod);
-	kdReadTipsy(kd,stdin,bDark,bGas,bStar);
+	kdInit(&kd,nBucket,fPeriod,fCenter);
+	kdReadTipsy(kd,stdin,bDark,bGas,bStar,bStandard);
 	kdBuildTree(kd);
 	kdTime(kd,&sec,&usec);
 	nGroup = kdFoF(kd,fEps);
@@ -122,11 +158,21 @@ int main(int argc,char **argv)
 		printf("Number of groups:%d\n",nGroup);
 		printf("FOF CPU TIME: %d.%06d secs\n",sec,usec);
 		}
+	strcpy(tmp,ach);
+	strcat(tmp,".gtp");
+	kdOutGTP(kd,tmp,bStandard);
+	/*
+	 ** Now re-order the particles.
+	 */
 	kdOrder(kd);
-	strcat(ach,".grp");
-	kdOutGroup(kd,ach);
+	strcpy(tmp,ach);
+	strcat(tmp,".grp");
+	kdOutGroup(kd,tmp);
 	kdFinish(kd);
 	}
+
+
+
 
 
 

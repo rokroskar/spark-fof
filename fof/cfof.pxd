@@ -24,6 +24,7 @@ cdef extern from "kd.h":
         int nActive
         float fTime;
         float fPeriod[3]
+        float fCenter[3]
         int nLevels
         int nNodes
         int nSplit
@@ -35,7 +36,7 @@ cdef extern from "kd.h":
         
     ctypedef kdContext* KD 
 
-    int kdInit(KD*, int, float*)
+    int kdInit(KD*, int, float*, float*)
     void kdBuildTree(KD)
     void kdTime(KD, int*, int*)
     int kdFoF(KD, float)

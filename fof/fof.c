@@ -5,7 +5,8 @@
     "distutils": {
         "depends": [
             "/cluster/home/roskarr/miniconda2/lib/python2.7/site-packages/numpy/core/include/numpy/arrayobject.h", 
-            "/cluster/home/roskarr/miniconda2/lib/python2.7/site-packages/numpy/core/include/numpy/ufuncobject.h"
+            "/cluster/home/roskarr/miniconda2/lib/python2.7/site-packages/numpy/core/include/numpy/ufuncobject.h", 
+            "fof/kd.h"
         ], 
         "extra_compile_args": [
             "-I", 
@@ -283,8 +284,8 @@ static CYTHON_INLINE float __PYX_NAN() {
   #endif
 #endif
 
-#define __PYX_HAVE__fof
-#define __PYX_HAVE_API__fof
+#define __PYX_HAVE__fof__fof
+#define __PYX_HAVE_API__fof__fof
 #include "kd.h"
 #include "string.h"
 #include "stdio.h"
@@ -821,23 +822,23 @@ typedef npy_double __pyx_t_5numpy_double_t;
  */
 typedef npy_longdouble __pyx_t_5numpy_longdouble_t;
 
-/* "fof.pyx":9
+/* "fof/fof.pyx":9
  * DTYPE = np.float
  * 
  * ctypedef np.float_t DTYPE_f             # <<<<<<<<<<<<<<
  * ctypedef np.int_t DTYPE_i
  * 
  */
-typedef __pyx_t_5numpy_float_t __pyx_t_3fof_DTYPE_f;
+typedef __pyx_t_5numpy_float_t __pyx_t_3fof_3fof_DTYPE_f;
 
-/* "fof.pyx":10
+/* "fof/fof.pyx":10
  * 
  * ctypedef np.float_t DTYPE_f
  * ctypedef np.int_t DTYPE_i             # <<<<<<<<<<<<<<
  * 
  * cdef extern from "math.h":
  */
-typedef __pyx_t_5numpy_int_t __pyx_t_3fof_DTYPE_i;
+typedef __pyx_t_5numpy_int_t __pyx_t_3fof_3fof_DTYPE_i;
 /* None.proto */
 #if CYTHON_CCOMPLEX
   #ifdef __cplusplus
@@ -1092,6 +1093,25 @@ static struct __pyx_vtabstruct__memoryviewslice *__pyx_vtabptr__memoryviewslice;
 #define __Pyx_CLEAR(r)    do { PyObject* tmp = ((PyObject*)(r)); r = NULL; __Pyx_DECREF(tmp);} while(0)
 #define __Pyx_XCLEAR(r)   do { if((r) != NULL) {PyObject* tmp = ((PyObject*)(r)); r = NULL; __Pyx_DECREF(tmp);}} while(0)
 
+/* PyObjectGetAttrStr.proto */
+#if CYTHON_COMPILING_IN_CPYTHON
+static CYTHON_INLINE PyObject* __Pyx_PyObject_GetAttrStr(PyObject* obj, PyObject* attr_name) {
+    PyTypeObject* tp = Py_TYPE(obj);
+    if (likely(tp->tp_getattro))
+        return tp->tp_getattro(obj, attr_name);
+#if PY_MAJOR_VERSION < 3
+    if (likely(tp->tp_getattr))
+        return tp->tp_getattr(obj, PyString_AS_STRING(attr_name));
+#endif
+    return PyObject_GetAttr(obj, attr_name);
+}
+#else
+#define __Pyx_PyObject_GetAttrStr(o,n) PyObject_GetAttr(o,n)
+#endif
+
+/* GetBuiltinName.proto */
+static PyObject *__Pyx_GetBuiltinName(PyObject *name);
+
 /* BufferFormatCheck.proto */
 static CYTHON_INLINE int  __Pyx_GetBufferAndValidate(Py_buffer* buf, PyObject* obj,
     __Pyx_TypeInfo* dtype, int flags, int nd, int cast, __Pyx_BufFmt_StackElem* stack);
@@ -1169,25 +1189,6 @@ static int __Pyx_ParseOptionalKeywords(PyObject *kwds, PyObject **argnames[],\
 /* ArgTypeTest.proto */
 static CYTHON_INLINE int __Pyx_ArgTypeTest(PyObject *obj, PyTypeObject *type, int none_allowed,
     const char *name, int exact);
-
-/* PyObjectGetAttrStr.proto */
-#if CYTHON_COMPILING_IN_CPYTHON
-static CYTHON_INLINE PyObject* __Pyx_PyObject_GetAttrStr(PyObject* obj, PyObject* attr_name) {
-    PyTypeObject* tp = Py_TYPE(obj);
-    if (likely(tp->tp_getattro))
-        return tp->tp_getattro(obj, attr_name);
-#if PY_MAJOR_VERSION < 3
-    if (likely(tp->tp_getattr))
-        return tp->tp_getattr(obj, PyString_AS_STRING(attr_name));
-#endif
-    return PyObject_GetAttr(obj, attr_name);
-}
-#else
-#define __Pyx_PyObject_GetAttrStr(o,n) PyObject_GetAttr(o,n)
-#endif
-
-/* GetBuiltinName.proto */
-static PyObject *__Pyx_GetBuiltinName(PyObject *name);
 
 /* PyObjectCall.proto */
 #if CYTHON_COMPILING_IN_CPYTHON
@@ -1647,7 +1648,7 @@ static PyObject *__pyx_memoryview_assign_item_from_object(struct __pyx_memoryvie
 static PyObject *__pyx_memoryviewslice_convert_item_to_object(struct __pyx_memoryviewslice_obj *__pyx_v_self, char *__pyx_v_itemp); /* proto*/
 static PyObject *__pyx_memoryviewslice_assign_item_from_object(struct __pyx_memoryviewslice_obj *__pyx_v_self, char *__pyx_v_itemp, PyObject *__pyx_v_value); /* proto*/
 
-/* Module declarations from 'cfof' */
+/* Module declarations from 'fof.cfof' */
 
 /* Module declarations from 'cpython.buffer' */
 
@@ -1678,7 +1679,7 @@ static PyTypeObject *__pyx_ptype_5numpy_ndarray = 0;
 static PyTypeObject *__pyx_ptype_5numpy_ufunc = 0;
 static CYTHON_INLINE char *__pyx_f_5numpy__util_dtypestring(PyArray_Descr *, char *, char *, int *); /*proto*/
 
-/* Module declarations from 'fof' */
+/* Module declarations from 'fof.fof' */
 static PyTypeObject *__pyx_array_type = 0;
 static PyTypeObject *__pyx_MemviewEnum_type = 0;
 static PyTypeObject *__pyx_memoryview_type = 0;
@@ -1690,14 +1691,14 @@ static PyObject *contiguous = 0;
 static PyObject *indirect_contiguous = 0;
 static int __pyx_memoryview_thread_locks_used;
 static PyThread_type_lock __pyx_memoryview_thread_locks[8];
-static PyObject *__pyx_f_3fof_kdInit(KD *, int, float *); /*proto*/
-static PyObject *__pyx_f_3fof_kdBuildTree(KD); /*proto*/
-static PyObject *__pyx_f_3fof_kdTime(KD, int *, int *); /*proto*/
-static PyObject *__pyx_f_3fof_kdFoF(KD, float); /*proto*/
-static PyObject *__pyx_f_3fof_kdTooSmall(KD, int); /*proto*/
-static PyObject *__pyx_f_3fof_kdOrder(KD); /*proto*/
-static PyObject *__pyx_f_3fof_populate_arrays(KD, PyArrayObject *); /*proto*/
-static PyObject *__pyx_f_3fof_run(PyArrayObject *, float, int __pyx_skip_dispatch); /*proto*/
+static PyObject *__pyx_f_3fof_3fof_kdInit(KD *, int, float *, float *); /*proto*/
+static PyObject *__pyx_f_3fof_3fof_kdBuildTree(KD); /*proto*/
+static PyObject *__pyx_f_3fof_3fof_kdTime(KD, int *, int *); /*proto*/
+static PyObject *__pyx_f_3fof_3fof_kdFoF(KD, float); /*proto*/
+static PyObject *__pyx_f_3fof_3fof_kdTooSmall(KD, int); /*proto*/
+static PyObject *__pyx_f_3fof_3fof_kdOrder(KD); /*proto*/
+static PyObject *__pyx_f_3fof_3fof_populate_arrays(KD, PyArrayObject *); /*proto*/
+static PyObject *__pyx_f_3fof_3fof_run(PyArrayObject *, float, int __pyx_skip_dispatch); /*proto*/
 static struct __pyx_array_obj *__pyx_array_new(PyObject *, Py_ssize_t, char *, char *, char *); /*proto*/
 static void *__pyx_align_pointer(void *, size_t); /*proto*/
 static PyObject *__pyx_memoryview_new(PyObject *, int, int, __Pyx_TypeInfo *); /*proto*/
@@ -1739,12 +1740,12 @@ static __Pyx_StructField __Pyx_StructFields_nn_PARTICLE[] = {
   {NULL, NULL, 0}
 };
 static __Pyx_TypeInfo __Pyx_TypeInfo_nn_PARTICLE = { "PARTICLE", __Pyx_StructFields_nn_PARTICLE, sizeof(PARTICLE), { 0 }, 0, 'S', 0, 0 };
-#define __Pyx_MODULE_NAME "fof"
-int __pyx_module_is_main_fof = 0;
+#define __Pyx_MODULE_NAME "fof.fof"
+int __pyx_module_is_main_fof__fof = 0;
 
-/* Implementation of 'fof' */
-static PyObject *__pyx_builtin_ValueError;
+/* Implementation of 'fof.fof' */
 static PyObject *__pyx_builtin_range;
+static PyObject *__pyx_builtin_ValueError;
 static PyObject *__pyx_builtin_RuntimeError;
 static PyObject *__pyx_builtin_MemoryError;
 static PyObject *__pyx_builtin_enumerate;
@@ -1900,7 +1901,7 @@ static PyObject *__pyx_kp_s_unable_to_allocate_array_data;
 static PyObject *__pyx_kp_s_unable_to_allocate_shape_and_str;
 static PyObject *__pyx_kp_u_unknown_dtype_code_in_numpy_pxd;
 static PyObject *__pyx_n_s_unpack;
-static PyObject *__pyx_pf_3fof_run(CYTHON_UNUSED PyObject *__pyx_self, PyArrayObject *__pyx_v_particles, float __pyx_v_fEps); /* proto */
+static PyObject *__pyx_pf_3fof_3fof_run(CYTHON_UNUSED PyObject *__pyx_self, PyArrayObject *__pyx_v_particles, float __pyx_v_fEps); /* proto */
 static int __pyx_pf_5numpy_7ndarray___getbuffer__(PyArrayObject *__pyx_v_self, Py_buffer *__pyx_v_info, int __pyx_v_flags); /* proto */
 static void __pyx_pf_5numpy_7ndarray_2__releasebuffer__(PyArrayObject *__pyx_v_self, Py_buffer *__pyx_v_info); /* proto */
 static int __pyx_array___pyx_pf_15View_dot_MemoryView_5array___cinit__(struct __pyx_array_obj *__pyx_v_self, PyObject *__pyx_v_shape, Py_ssize_t __pyx_v_itemsize, PyObject *__pyx_v_format, PyObject *__pyx_v_mode, int __pyx_v_allocate_buffer); /* proto */
@@ -1967,33 +1968,33 @@ static PyObject *__pyx_tuple__22;
 static PyObject *__pyx_tuple__23;
 static PyObject *__pyx_tuple__24;
 
-/* "fof.pyx":16
+/* "fof/fof.pyx":16
  * 
  * # fof wrapper functions
- * cdef kdInit(cfof.KD* kd, int nBucket, float* fPeriod):             # <<<<<<<<<<<<<<
- *     cfof.kdInit(kd, nBucket, fPeriod)
+ * cdef kdInit(cfof.KD* kd, int nBucket, float* fPeriod, float* fCenter):             # <<<<<<<<<<<<<<
+ *     cfof.kdInit(kd, nBucket, fPeriod, fCenter)
  * 
  */
 
-static PyObject *__pyx_f_3fof_kdInit(KD *__pyx_v_kd, int __pyx_v_nBucket, float *__pyx_v_fPeriod) {
+static PyObject *__pyx_f_3fof_3fof_kdInit(KD *__pyx_v_kd, int __pyx_v_nBucket, float *__pyx_v_fPeriod, float *__pyx_v_fCenter) {
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("kdInit", 0);
 
-  /* "fof.pyx":17
+  /* "fof/fof.pyx":17
  * # fof wrapper functions
- * cdef kdInit(cfof.KD* kd, int nBucket, float* fPeriod):
- *     cfof.kdInit(kd, nBucket, fPeriod)             # <<<<<<<<<<<<<<
+ * cdef kdInit(cfof.KD* kd, int nBucket, float* fPeriod, float* fCenter):
+ *     cfof.kdInit(kd, nBucket, fPeriod, fCenter)             # <<<<<<<<<<<<<<
  * 
  * cdef kdBuildTree(cfof.KD kd):
  */
-  kdInit(__pyx_v_kd, __pyx_v_nBucket, __pyx_v_fPeriod);
+  kdInit(__pyx_v_kd, __pyx_v_nBucket, __pyx_v_fPeriod, __pyx_v_fCenter);
 
-  /* "fof.pyx":16
+  /* "fof/fof.pyx":16
  * 
  * # fof wrapper functions
- * cdef kdInit(cfof.KD* kd, int nBucket, float* fPeriod):             # <<<<<<<<<<<<<<
- *     cfof.kdInit(kd, nBucket, fPeriod)
+ * cdef kdInit(cfof.KD* kd, int nBucket, float* fPeriod, float* fCenter):             # <<<<<<<<<<<<<<
+ *     cfof.kdInit(kd, nBucket, fPeriod, fCenter)
  * 
  */
 
@@ -2004,20 +2005,20 @@ static PyObject *__pyx_f_3fof_kdInit(KD *__pyx_v_kd, int __pyx_v_nBucket, float 
   return __pyx_r;
 }
 
-/* "fof.pyx":19
- *     cfof.kdInit(kd, nBucket, fPeriod)
+/* "fof/fof.pyx":19
+ *     cfof.kdInit(kd, nBucket, fPeriod, fCenter)
  * 
  * cdef kdBuildTree(cfof.KD kd):             # <<<<<<<<<<<<<<
  *     cfof.kdBuildTree(kd)
  * 
  */
 
-static PyObject *__pyx_f_3fof_kdBuildTree(KD __pyx_v_kd) {
+static PyObject *__pyx_f_3fof_3fof_kdBuildTree(KD __pyx_v_kd) {
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("kdBuildTree", 0);
 
-  /* "fof.pyx":20
+  /* "fof/fof.pyx":20
  * 
  * cdef kdBuildTree(cfof.KD kd):
  *     cfof.kdBuildTree(kd)             # <<<<<<<<<<<<<<
@@ -2026,8 +2027,8 @@ static PyObject *__pyx_f_3fof_kdBuildTree(KD __pyx_v_kd) {
  */
   kdBuildTree(__pyx_v_kd);
 
-  /* "fof.pyx":19
- *     cfof.kdInit(kd, nBucket, fPeriod)
+  /* "fof/fof.pyx":19
+ *     cfof.kdInit(kd, nBucket, fPeriod, fCenter)
  * 
  * cdef kdBuildTree(cfof.KD kd):             # <<<<<<<<<<<<<<
  *     cfof.kdBuildTree(kd)
@@ -2041,7 +2042,7 @@ static PyObject *__pyx_f_3fof_kdBuildTree(KD __pyx_v_kd) {
   return __pyx_r;
 }
 
-/* "fof.pyx":22
+/* "fof/fof.pyx":22
  *     cfof.kdBuildTree(kd)
  * 
  * cdef kdTime(cfof.KD kd, int* sec, int* usec):             # <<<<<<<<<<<<<<
@@ -2049,12 +2050,12 @@ static PyObject *__pyx_f_3fof_kdBuildTree(KD __pyx_v_kd) {
  * 
  */
 
-static PyObject *__pyx_f_3fof_kdTime(KD __pyx_v_kd, int *__pyx_v_sec, int *__pyx_v_usec) {
+static PyObject *__pyx_f_3fof_3fof_kdTime(KD __pyx_v_kd, int *__pyx_v_sec, int *__pyx_v_usec) {
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("kdTime", 0);
 
-  /* "fof.pyx":23
+  /* "fof/fof.pyx":23
  * 
  * cdef kdTime(cfof.KD kd, int* sec, int* usec):
  *     cfof.kdTime(kd, sec, usec)             # <<<<<<<<<<<<<<
@@ -2063,7 +2064,7 @@ static PyObject *__pyx_f_3fof_kdTime(KD __pyx_v_kd, int *__pyx_v_sec, int *__pyx
  */
   kdTime(__pyx_v_kd, __pyx_v_sec, __pyx_v_usec);
 
-  /* "fof.pyx":22
+  /* "fof/fof.pyx":22
  *     cfof.kdBuildTree(kd)
  * 
  * cdef kdTime(cfof.KD kd, int* sec, int* usec):             # <<<<<<<<<<<<<<
@@ -2078,7 +2079,7 @@ static PyObject *__pyx_f_3fof_kdTime(KD __pyx_v_kd, int *__pyx_v_sec, int *__pyx
   return __pyx_r;
 }
 
-/* "fof.pyx":25
+/* "fof/fof.pyx":25
  *     cfof.kdTime(kd, sec, usec)
  * 
  * cdef kdFoF(cfof.KD kd, float fEps):             # <<<<<<<<<<<<<<
@@ -2086,13 +2087,13 @@ static PyObject *__pyx_f_3fof_kdTime(KD __pyx_v_kd, int *__pyx_v_sec, int *__pyx
  * 
  */
 
-static PyObject *__pyx_f_3fof_kdFoF(KD __pyx_v_kd, float __pyx_v_fEps) {
+static PyObject *__pyx_f_3fof_3fof_kdFoF(KD __pyx_v_kd, float __pyx_v_fEps) {
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   PyObject *__pyx_t_1 = NULL;
   __Pyx_RefNannySetupContext("kdFoF", 0);
 
-  /* "fof.pyx":26
+  /* "fof/fof.pyx":26
  * 
  * cdef kdFoF(cfof.KD kd, float fEps):
  *     return cfof.kdFoF(kd, fEps)             # <<<<<<<<<<<<<<
@@ -2106,7 +2107,7 @@ static PyObject *__pyx_f_3fof_kdFoF(KD __pyx_v_kd, float __pyx_v_fEps) {
   __pyx_t_1 = 0;
   goto __pyx_L0;
 
-  /* "fof.pyx":25
+  /* "fof/fof.pyx":25
  *     cfof.kdTime(kd, sec, usec)
  * 
  * cdef kdFoF(cfof.KD kd, float fEps):             # <<<<<<<<<<<<<<
@@ -2117,7 +2118,7 @@ static PyObject *__pyx_f_3fof_kdFoF(KD __pyx_v_kd, float __pyx_v_fEps) {
   /* function exit code */
   __pyx_L1_error:;
   __Pyx_XDECREF(__pyx_t_1);
-  __Pyx_AddTraceback("fof.kdFoF", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("fof.fof.kdFoF", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = 0;
   __pyx_L0:;
   __Pyx_XGIVEREF(__pyx_r);
@@ -2125,7 +2126,7 @@ static PyObject *__pyx_f_3fof_kdFoF(KD __pyx_v_kd, float __pyx_v_fEps) {
   return __pyx_r;
 }
 
-/* "fof.pyx":28
+/* "fof/fof.pyx":28
  *     return cfof.kdFoF(kd, fEps)
  * 
  * cdef kdTooSmall(cfof.KD kd, int nMembers):             # <<<<<<<<<<<<<<
@@ -2133,13 +2134,13 @@ static PyObject *__pyx_f_3fof_kdFoF(KD __pyx_v_kd, float __pyx_v_fEps) {
  * 
  */
 
-static PyObject *__pyx_f_3fof_kdTooSmall(KD __pyx_v_kd, int __pyx_v_nMembers) {
+static PyObject *__pyx_f_3fof_3fof_kdTooSmall(KD __pyx_v_kd, int __pyx_v_nMembers) {
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   PyObject *__pyx_t_1 = NULL;
   __Pyx_RefNannySetupContext("kdTooSmall", 0);
 
-  /* "fof.pyx":29
+  /* "fof/fof.pyx":29
  * 
  * cdef kdTooSmall(cfof.KD kd, int nMembers):
  *     return cfof.kdTooSmall(kd, nMembers)             # <<<<<<<<<<<<<<
@@ -2153,7 +2154,7 @@ static PyObject *__pyx_f_3fof_kdTooSmall(KD __pyx_v_kd, int __pyx_v_nMembers) {
   __pyx_t_1 = 0;
   goto __pyx_L0;
 
-  /* "fof.pyx":28
+  /* "fof/fof.pyx":28
  *     return cfof.kdFoF(kd, fEps)
  * 
  * cdef kdTooSmall(cfof.KD kd, int nMembers):             # <<<<<<<<<<<<<<
@@ -2164,7 +2165,7 @@ static PyObject *__pyx_f_3fof_kdTooSmall(KD __pyx_v_kd, int __pyx_v_nMembers) {
   /* function exit code */
   __pyx_L1_error:;
   __Pyx_XDECREF(__pyx_t_1);
-  __Pyx_AddTraceback("fof.kdTooSmall", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("fof.fof.kdTooSmall", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = 0;
   __pyx_L0:;
   __Pyx_XGIVEREF(__pyx_r);
@@ -2172,7 +2173,7 @@ static PyObject *__pyx_f_3fof_kdTooSmall(KD __pyx_v_kd, int __pyx_v_nMembers) {
   return __pyx_r;
 }
 
-/* "fof.pyx":31
+/* "fof/fof.pyx":31
  *     return cfof.kdTooSmall(kd, nMembers)
  * 
  * cdef kdOrder(cfof.KD kd):             # <<<<<<<<<<<<<<
@@ -2180,12 +2181,12 @@ static PyObject *__pyx_f_3fof_kdTooSmall(KD __pyx_v_kd, int __pyx_v_nMembers) {
  * 
  */
 
-static PyObject *__pyx_f_3fof_kdOrder(KD __pyx_v_kd) {
+static PyObject *__pyx_f_3fof_3fof_kdOrder(KD __pyx_v_kd) {
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("kdOrder", 0);
 
-  /* "fof.pyx":32
+  /* "fof/fof.pyx":32
  * 
  * cdef kdOrder(cfof.KD kd):
  *     cfof.kdOrder(kd)             # <<<<<<<<<<<<<<
@@ -2194,7 +2195,7 @@ static PyObject *__pyx_f_3fof_kdOrder(KD __pyx_v_kd) {
  */
   kdOrder(__pyx_v_kd);
 
-  /* "fof.pyx":31
+  /* "fof/fof.pyx":31
  *     return cfof.kdTooSmall(kd, nMembers)
  * 
  * cdef kdOrder(cfof.KD kd):             # <<<<<<<<<<<<<<
@@ -2209,7 +2210,7 @@ static PyObject *__pyx_f_3fof_kdOrder(KD __pyx_v_kd) {
   return __pyx_r;
 }
 
-/* "fof.pyx":34
+/* "fof/fof.pyx":34
  *     cfof.kdOrder(kd)
  * 
  * cdef kdFinish(cfof.KD kd):             # <<<<<<<<<<<<<<
@@ -2217,12 +2218,12 @@ static PyObject *__pyx_f_3fof_kdOrder(KD __pyx_v_kd) {
  * 
  */
 
-static PyObject *__pyx_f_3fof_kdFinish(KD __pyx_v_kd) {
+static PyObject *__pyx_f_3fof_3fof_kdFinish(KD __pyx_v_kd) {
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("kdFinish", 0);
 
-  /* "fof.pyx":35
+  /* "fof/fof.pyx":35
  * 
  * cdef kdFinish(cfof.KD kd):
  *     cfof.kdFinish(kd)             # <<<<<<<<<<<<<<
@@ -2231,7 +2232,7 @@ static PyObject *__pyx_f_3fof_kdFinish(KD __pyx_v_kd) {
  */
   kdFinish(__pyx_v_kd);
 
-  /* "fof.pyx":34
+  /* "fof/fof.pyx":34
  *     cfof.kdOrder(kd)
  * 
  * cdef kdFinish(cfof.KD kd):             # <<<<<<<<<<<<<<
@@ -2246,7 +2247,7 @@ static PyObject *__pyx_f_3fof_kdFinish(KD __pyx_v_kd) {
   return __pyx_r;
 }
 
-/* "fof.pyx":39
+/* "fof/fof.pyx":39
  * 
  * # cython functions for working with kd/fof
  * cdef populate_arrays(cfof.KD kd, np.ndarray[cfof.PARTICLE] particles):             # <<<<<<<<<<<<<<
@@ -2254,7 +2255,7 @@ static PyObject *__pyx_f_3fof_kdFinish(KD __pyx_v_kd) {
  * 
  */
 
-static PyObject *__pyx_f_3fof_populate_arrays(KD __pyx_v_kd, PyArrayObject *__pyx_v_particles) {
+static PyObject *__pyx_f_3fof_3fof_populate_arrays(KD __pyx_v_kd, PyArrayObject *__pyx_v_particles) {
   __Pyx_memviewslice __pyx_v_parr = { 0, 0, { 0 }, { 0 }, { 0 } };
   __Pyx_LocalBuf_ND __pyx_pybuffernd_particles;
   __Pyx_Buffer __pyx_pybuffer_particles;
@@ -2275,7 +2276,7 @@ static PyObject *__pyx_f_3fof_populate_arrays(KD __pyx_v_kd, PyArrayObject *__py
   }
   __pyx_pybuffernd_particles.diminfo[0].strides = __pyx_pybuffernd_particles.rcbuffer->pybuffer.strides[0]; __pyx_pybuffernd_particles.diminfo[0].shape = __pyx_pybuffernd_particles.rcbuffer->pybuffer.shape[0];
 
-  /* "fof.pyx":40
+  /* "fof/fof.pyx":40
  * # cython functions for working with kd/fof
  * cdef populate_arrays(cfof.KD kd, np.ndarray[cfof.PARTICLE] particles):
  *     cdef cfof.PARTICLE[:] parr = particles             # <<<<<<<<<<<<<<
@@ -2288,7 +2289,7 @@ static PyObject *__pyx_f_3fof_populate_arrays(KD __pyx_v_kd, PyArrayObject *__py
   __pyx_t_1.memview = NULL;
   __pyx_t_1.data = NULL;
 
-  /* "fof.pyx":42
+  /* "fof/fof.pyx":42
  *     cdef cfof.PARTICLE[:] parr = particles
  * 
  *     kd.p = &parr[0]             # <<<<<<<<<<<<<<
@@ -2307,7 +2308,7 @@ static PyObject *__pyx_f_3fof_populate_arrays(KD __pyx_v_kd, PyArrayObject *__py
   }
   __pyx_v_kd->p = (&(*((PARTICLE *) ( /* dim=0 */ (__pyx_v_parr.data + __pyx_t_2 * __pyx_v_parr.strides[0]) ))));
 
-  /* "fof.pyx":44
+  /* "fof/fof.pyx":44
  *     kd.p = &parr[0]
  * 
  *     kd.nParticles = <int>len(particles)             # <<<<<<<<<<<<<<
@@ -2317,7 +2318,7 @@ static PyObject *__pyx_f_3fof_populate_arrays(KD __pyx_v_kd, PyArrayObject *__py
   __pyx_t_4 = PyObject_Length(((PyObject *)__pyx_v_particles)); if (unlikely(__pyx_t_4 == -1)) __PYX_ERR(0, 44, __pyx_L1_error)
   __pyx_v_kd->nParticles = ((int)__pyx_t_4);
 
-  /* "fof.pyx":45
+  /* "fof/fof.pyx":45
  * 
  *     kd.nParticles = <int>len(particles)
  *     kd.nDark = <int>len(particles)             # <<<<<<<<<<<<<<
@@ -2327,7 +2328,7 @@ static PyObject *__pyx_f_3fof_populate_arrays(KD __pyx_v_kd, PyArrayObject *__py
   __pyx_t_4 = PyObject_Length(((PyObject *)__pyx_v_particles)); if (unlikely(__pyx_t_4 == -1)) __PYX_ERR(0, 45, __pyx_L1_error)
   __pyx_v_kd->nDark = ((int)__pyx_t_4);
 
-  /* "fof.pyx":46
+  /* "fof/fof.pyx":46
  *     kd.nParticles = <int>len(particles)
  *     kd.nDark = <int>len(particles)
  *     kd.nGas = 0             # <<<<<<<<<<<<<<
@@ -2336,7 +2337,7 @@ static PyObject *__pyx_f_3fof_populate_arrays(KD __pyx_v_kd, PyArrayObject *__py
  */
   __pyx_v_kd->nGas = 0;
 
-  /* "fof.pyx":47
+  /* "fof/fof.pyx":47
  *     kd.nDark = <int>len(particles)
  *     kd.nGas = 0
  *     kd.nStar = 0             # <<<<<<<<<<<<<<
@@ -2345,7 +2346,7 @@ static PyObject *__pyx_f_3fof_populate_arrays(KD __pyx_v_kd, PyArrayObject *__py
  */
   __pyx_v_kd->nStar = 0;
 
-  /* "fof.pyx":48
+  /* "fof/fof.pyx":48
  *     kd.nGas = 0
  *     kd.nStar = 0
  *     kd.fTime = 0.0             # <<<<<<<<<<<<<<
@@ -2354,7 +2355,7 @@ static PyObject *__pyx_f_3fof_populate_arrays(KD __pyx_v_kd, PyArrayObject *__py
  */
   __pyx_v_kd->fTime = 0.0;
 
-  /* "fof.pyx":49
+  /* "fof/fof.pyx":49
  *     kd.nStar = 0
  *     kd.fTime = 0.0
  *     kd.nActive = kd.nDark             # <<<<<<<<<<<<<<
@@ -2364,7 +2365,7 @@ static PyObject *__pyx_f_3fof_populate_arrays(KD __pyx_v_kd, PyArrayObject *__py
   __pyx_t_3 = __pyx_v_kd->nDark;
   __pyx_v_kd->nActive = __pyx_t_3;
 
-  /* "fof.pyx":50
+  /* "fof/fof.pyx":50
  *     kd.fTime = 0.0
  *     kd.nActive = kd.nDark
  *     kd.bDark = 1             # <<<<<<<<<<<<<<
@@ -2373,7 +2374,7 @@ static PyObject *__pyx_f_3fof_populate_arrays(KD __pyx_v_kd, PyArrayObject *__py
  */
   __pyx_v_kd->bDark = 1;
 
-  /* "fof.pyx":51
+  /* "fof/fof.pyx":51
  *     kd.nActive = kd.nDark
  *     kd.bDark = 1
  *     kd.bGas = 0             # <<<<<<<<<<<<<<
@@ -2382,7 +2383,7 @@ static PyObject *__pyx_f_3fof_populate_arrays(KD __pyx_v_kd, PyArrayObject *__py
  */
   __pyx_v_kd->bGas = 0;
 
-  /* "fof.pyx":52
+  /* "fof/fof.pyx":52
  *     kd.bDark = 1
  *     kd.bGas = 0
  *     kd.bStar = 0             # <<<<<<<<<<<<<<
@@ -2391,7 +2392,7 @@ static PyObject *__pyx_f_3fof_populate_arrays(KD __pyx_v_kd, PyArrayObject *__py
  */
   __pyx_v_kd->bStar = 0;
 
-  /* "fof.pyx":39
+  /* "fof/fof.pyx":39
  * 
  * # cython functions for working with kd/fof
  * cdef populate_arrays(cfof.KD kd, np.ndarray[cfof.PARTICLE] particles):             # <<<<<<<<<<<<<<
@@ -2410,7 +2411,7 @@ static PyObject *__pyx_f_3fof_populate_arrays(KD __pyx_v_kd, PyArrayObject *__py
     __Pyx_ErrFetch(&__pyx_type, &__pyx_value, &__pyx_tb);
     __Pyx_SafeReleaseBuffer(&__pyx_pybuffernd_particles.rcbuffer->pybuffer);
   __Pyx_ErrRestore(__pyx_type, __pyx_value, __pyx_tb);}
-  __Pyx_AddTraceback("fof.populate_arrays", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("fof.fof.populate_arrays", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = 0;
   goto __pyx_L2;
   __pyx_L0:;
@@ -2422,29 +2423,31 @@ static PyObject *__pyx_f_3fof_populate_arrays(KD __pyx_v_kd, PyArrayObject *__py
   return __pyx_r;
 }
 
-/* "fof.pyx":56
+/* "fof/fof.pyx":56
  * 
  * # main function called from python
  * cpdef run(np.ndarray[cfof.PARTICLE] particles, float fEps):             # <<<<<<<<<<<<<<
  *     cdef cfof.KD kd
- *     cdef float fPeriod[3]
+ *     cdef float fPeriod[3], fCenter[3]
  */
 
-static PyObject *__pyx_pw_3fof_1run(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
-static PyObject *__pyx_f_3fof_run(PyArrayObject *__pyx_v_particles, float __pyx_v_fEps, CYTHON_UNUSED int __pyx_skip_dispatch) {
+static PyObject *__pyx_pw_3fof_3fof_1run(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
+static PyObject *__pyx_f_3fof_3fof_run(PyArrayObject *__pyx_v_particles, float __pyx_v_fEps, CYTHON_UNUSED int __pyx_skip_dispatch) {
   KD __pyx_v_kd;
   float __pyx_v_fPeriod[3];
+  float __pyx_v_fCenter[3];
   int __pyx_v_nBucket;
   int __pyx_v_nGroup;
   int __pyx_v_sec;
   int __pyx_v_usec;
   int __pyx_v_nMembers;
+  int __pyx_v_i;
   __Pyx_LocalBuf_ND __pyx_pybuffernd_particles;
   __Pyx_Buffer __pyx_pybuffer_particles;
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
-  PyObject *__pyx_t_1 = NULL;
-  int __pyx_t_2;
+  int __pyx_t_1;
+  PyObject *__pyx_t_2 = NULL;
   __Pyx_RefNannySetupContext("run", 0);
   __pyx_pybuffer_particles.pybuffer.buf = NULL;
   __pyx_pybuffer_particles.refcount = 0;
@@ -2456,173 +2459,175 @@ static PyObject *__pyx_f_3fof_run(PyArrayObject *__pyx_v_particles, float __pyx_
   }
   __pyx_pybuffernd_particles.diminfo[0].strides = __pyx_pybuffernd_particles.rcbuffer->pybuffer.strides[0]; __pyx_pybuffernd_particles.diminfo[0].shape = __pyx_pybuffernd_particles.rcbuffer->pybuffer.shape[0];
 
-  /* "fof.pyx":59
+  /* "fof/fof.pyx":59
  *     cdef cfof.KD kd
- *     cdef float fPeriod[3]
+ *     cdef float fPeriod[3], fCenter[3]
  *     cdef int nBucket = 16             # <<<<<<<<<<<<<<
  *     cdef int res
  *     cdef int nGroup
  */
   __pyx_v_nBucket = 16;
 
-  /* "fof.pyx":63
+  /* "fof/fof.pyx":63
  *     cdef int nGroup
  *     cdef int sec, usec
  *     cdef int nMembers = 8             # <<<<<<<<<<<<<<
- *     fPeriod[0] = INFINITY
- *     fPeriod[1] = INFINITY
+ *     cdef int i
+ * 
  */
   __pyx_v_nMembers = 8;
 
-  /* "fof.pyx":64
- *     cdef int sec, usec
- *     cdef int nMembers = 8
- *     fPeriod[0] = INFINITY             # <<<<<<<<<<<<<<
- *     fPeriod[1] = INFINITY
- *     fPeriod[2] = INFINITY
+  /* "fof/fof.pyx":66
+ *     cdef int i
+ * 
+ *     for i in range(3):             # <<<<<<<<<<<<<<
+ *         fPeriod[i] = INFINITY
+ *         fCenter[i] = 0.0
  */
-  (__pyx_v_fPeriod[0]) = INFINITY;
+  for (__pyx_t_1 = 0; __pyx_t_1 < 3; __pyx_t_1+=1) {
+    __pyx_v_i = __pyx_t_1;
 
-  /* "fof.pyx":65
- *     cdef int nMembers = 8
- *     fPeriod[0] = INFINITY
- *     fPeriod[1] = INFINITY             # <<<<<<<<<<<<<<
- *     fPeriod[2] = INFINITY
+    /* "fof/fof.pyx":67
+ * 
+ *     for i in range(3):
+ *         fPeriod[i] = INFINITY             # <<<<<<<<<<<<<<
+ *         fCenter[i] = 0.0
  * 
  */
-  (__pyx_v_fPeriod[1]) = INFINITY;
+    (__pyx_v_fPeriod[__pyx_v_i]) = INFINITY;
 
-  /* "fof.pyx":66
- *     fPeriod[0] = INFINITY
- *     fPeriod[1] = INFINITY
- *     fPeriod[2] = INFINITY             # <<<<<<<<<<<<<<
- * 
- *     # initialize
- */
-  (__pyx_v_fPeriod[2]) = INFINITY;
-
-  /* "fof.pyx":69
+    /* "fof/fof.pyx":68
+ *     for i in range(3):
+ *         fPeriod[i] = INFINITY
+ *         fCenter[i] = 0.0             # <<<<<<<<<<<<<<
  * 
  *     # initialize
- *     kdInit(&kd, nBucket, fPeriod)             # <<<<<<<<<<<<<<
+ */
+    (__pyx_v_fCenter[__pyx_v_i]) = 0.0;
+  }
+
+  /* "fof/fof.pyx":71
+ * 
+ *     # initialize
+ *     kdInit(&kd, nBucket, fPeriod, fCenter)             # <<<<<<<<<<<<<<
  * 
  *     # put the arrays into the kd context
  */
-  __pyx_t_1 = __pyx_f_3fof_kdInit((&__pyx_v_kd), __pyx_v_nBucket, __pyx_v_fPeriod); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 69, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = __pyx_f_3fof_3fof_kdInit((&__pyx_v_kd), __pyx_v_nBucket, __pyx_v_fPeriod, __pyx_v_fCenter); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 71, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "fof.pyx":72
+  /* "fof/fof.pyx":74
  * 
  *     # put the arrays into the kd context
  *     populate_arrays(kd, particles)             # <<<<<<<<<<<<<<
  * 
  *     # build the tree
  */
-  __pyx_t_1 = __pyx_f_3fof_populate_arrays(__pyx_v_kd, ((PyArrayObject *)__pyx_v_particles)); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 72, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = __pyx_f_3fof_3fof_populate_arrays(__pyx_v_kd, ((PyArrayObject *)__pyx_v_particles)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 74, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "fof.pyx":75
+  /* "fof/fof.pyx":77
  * 
  *     # build the tree
  *     kdBuildTree(kd)             # <<<<<<<<<<<<<<
  * 
  *     # set the timer
  */
-  __pyx_t_1 = __pyx_f_3fof_kdBuildTree(__pyx_v_kd); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 75, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = __pyx_f_3fof_3fof_kdBuildTree(__pyx_v_kd); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 77, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "fof.pyx":78
+  /* "fof/fof.pyx":80
  * 
  *     # set the timer
  *     kdTime(kd,&sec,&usec)             # <<<<<<<<<<<<<<
  * 
  *     # get groups
  */
-  __pyx_t_1 = __pyx_f_3fof_kdTime(__pyx_v_kd, (&__pyx_v_sec), (&__pyx_v_usec)); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 78, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = __pyx_f_3fof_3fof_kdTime(__pyx_v_kd, (&__pyx_v_sec), (&__pyx_v_usec)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 80, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "fof.pyx":81
+  /* "fof/fof.pyx":83
  * 
  *     # get groups
  *     nGroup = kdFoF(kd, fEps)             # <<<<<<<<<<<<<<
  * 
  *     # set the timer
  */
-  __pyx_t_1 = __pyx_f_3fof_kdFoF(__pyx_v_kd, __pyx_v_fEps); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 81, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) __PYX_ERR(0, 81, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_v_nGroup = __pyx_t_2;
+  __pyx_t_2 = __pyx_f_3fof_3fof_kdFoF(__pyx_v_kd, __pyx_v_fEps); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 83, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  __pyx_t_1 = __Pyx_PyInt_As_int(__pyx_t_2); if (unlikely((__pyx_t_1 == (int)-1) && PyErr_Occurred())) __PYX_ERR(0, 83, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+  __pyx_v_nGroup = __pyx_t_1;
 
-  /* "fof.pyx":84
+  /* "fof/fof.pyx":86
  * 
  *     # set the timer
  *     kdTime(kd,&sec,&usec)             # <<<<<<<<<<<<<<
  * 
  *     # eliminate small groups
  */
-  __pyx_t_1 = __pyx_f_3fof_kdTime(__pyx_v_kd, (&__pyx_v_sec), (&__pyx_v_usec)); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 84, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = __pyx_f_3fof_3fof_kdTime(__pyx_v_kd, (&__pyx_v_sec), (&__pyx_v_usec)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 86, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "fof.pyx":87
+  /* "fof/fof.pyx":89
  * 
  *     # eliminate small groups
  *     nGroup = kdTooSmall(kd, nMembers)             # <<<<<<<<<<<<<<
  * 
  *     # reorder the array
  */
-  __pyx_t_1 = __pyx_f_3fof_kdTooSmall(__pyx_v_kd, __pyx_v_nMembers); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 87, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyInt_As_int(__pyx_t_1); if (unlikely((__pyx_t_2 == (int)-1) && PyErr_Occurred())) __PYX_ERR(0, 87, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_v_nGroup = __pyx_t_2;
+  __pyx_t_2 = __pyx_f_3fof_3fof_kdTooSmall(__pyx_v_kd, __pyx_v_nMembers); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 89, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  __pyx_t_1 = __Pyx_PyInt_As_int(__pyx_t_2); if (unlikely((__pyx_t_1 == (int)-1) && PyErr_Occurred())) __PYX_ERR(0, 89, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+  __pyx_v_nGroup = __pyx_t_1;
 
-  /* "fof.pyx":90
+  /* "fof/fof.pyx":92
  * 
  *     # reorder the array
  *     kdOrder(kd)             # <<<<<<<<<<<<<<
  * 
  *     return nGroup
  */
-  __pyx_t_1 = __pyx_f_3fof_kdOrder(__pyx_v_kd); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 90, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = __pyx_f_3fof_3fof_kdOrder(__pyx_v_kd); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 92, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "fof.pyx":92
+  /* "fof/fof.pyx":94
  *     kdOrder(kd)
  * 
  *     return nGroup             # <<<<<<<<<<<<<<
  */
   __Pyx_XDECREF(__pyx_r);
-  __pyx_t_1 = __Pyx_PyInt_From_int(__pyx_v_nGroup); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 92, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __pyx_r = __pyx_t_1;
-  __pyx_t_1 = 0;
+  __pyx_t_2 = __Pyx_PyInt_From_int(__pyx_v_nGroup); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 94, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  __pyx_r = __pyx_t_2;
+  __pyx_t_2 = 0;
   goto __pyx_L0;
 
-  /* "fof.pyx":56
+  /* "fof/fof.pyx":56
  * 
  * # main function called from python
  * cpdef run(np.ndarray[cfof.PARTICLE] particles, float fEps):             # <<<<<<<<<<<<<<
  *     cdef cfof.KD kd
- *     cdef float fPeriod[3]
+ *     cdef float fPeriod[3], fCenter[3]
  */
 
   /* function exit code */
   __pyx_L1_error:;
-  __Pyx_XDECREF(__pyx_t_1);
+  __Pyx_XDECREF(__pyx_t_2);
   { PyObject *__pyx_type, *__pyx_value, *__pyx_tb;
     __Pyx_PyThreadState_declare
     __Pyx_PyThreadState_assign
     __Pyx_ErrFetch(&__pyx_type, &__pyx_value, &__pyx_tb);
     __Pyx_SafeReleaseBuffer(&__pyx_pybuffernd_particles.rcbuffer->pybuffer);
   __Pyx_ErrRestore(__pyx_type, __pyx_value, __pyx_tb);}
-  __Pyx_AddTraceback("fof.run", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("fof.fof.run", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = 0;
   goto __pyx_L2;
   __pyx_L0:;
@@ -2634,8 +2639,8 @@ static PyObject *__pyx_f_3fof_run(PyArrayObject *__pyx_v_particles, float __pyx_
 }
 
 /* Python wrapper */
-static PyObject *__pyx_pw_3fof_1run(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
-static PyObject *__pyx_pw_3fof_1run(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds) {
+static PyObject *__pyx_pw_3fof_3fof_1run(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
+static PyObject *__pyx_pw_3fof_3fof_1run(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds) {
   PyArrayObject *__pyx_v_particles = 0;
   float __pyx_v_fEps;
   PyObject *__pyx_r = 0;
@@ -2680,12 +2685,12 @@ static PyObject *__pyx_pw_3fof_1run(PyObject *__pyx_self, PyObject *__pyx_args, 
   __pyx_L5_argtuple_error:;
   __Pyx_RaiseArgtupleInvalid("run", 1, 2, 2, PyTuple_GET_SIZE(__pyx_args)); __PYX_ERR(0, 56, __pyx_L3_error)
   __pyx_L3_error:;
-  __Pyx_AddTraceback("fof.run", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("fof.fof.run", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __Pyx_RefNannyFinishContext();
   return NULL;
   __pyx_L4_argument_unpacking_done:;
   if (unlikely(!__Pyx_ArgTypeTest(((PyObject *)__pyx_v_particles), __pyx_ptype_5numpy_ndarray, 1, "particles", 0))) __PYX_ERR(0, 56, __pyx_L1_error)
-  __pyx_r = __pyx_pf_3fof_run(__pyx_self, __pyx_v_particles, __pyx_v_fEps);
+  __pyx_r = __pyx_pf_3fof_3fof_run(__pyx_self, __pyx_v_particles, __pyx_v_fEps);
 
   /* function exit code */
   goto __pyx_L0;
@@ -2696,7 +2701,7 @@ static PyObject *__pyx_pw_3fof_1run(PyObject *__pyx_self, PyObject *__pyx_args, 
   return __pyx_r;
 }
 
-static PyObject *__pyx_pf_3fof_run(CYTHON_UNUSED PyObject *__pyx_self, PyArrayObject *__pyx_v_particles, float __pyx_v_fEps) {
+static PyObject *__pyx_pf_3fof_3fof_run(CYTHON_UNUSED PyObject *__pyx_self, PyArrayObject *__pyx_v_particles, float __pyx_v_fEps) {
   __Pyx_LocalBuf_ND __pyx_pybuffernd_particles;
   __Pyx_Buffer __pyx_pybuffer_particles;
   PyObject *__pyx_r = NULL;
@@ -2713,7 +2718,7 @@ static PyObject *__pyx_pf_3fof_run(CYTHON_UNUSED PyObject *__pyx_self, PyArrayOb
   }
   __pyx_pybuffernd_particles.diminfo[0].strides = __pyx_pybuffernd_particles.rcbuffer->pybuffer.strides[0]; __pyx_pybuffernd_particles.diminfo[0].shape = __pyx_pybuffernd_particles.rcbuffer->pybuffer.shape[0];
   __Pyx_XDECREF(__pyx_r);
-  __pyx_t_1 = __pyx_f_3fof_run(__pyx_v_particles, __pyx_v_fEps, 0); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 56, __pyx_L1_error)
+  __pyx_t_1 = __pyx_f_3fof_3fof_run(__pyx_v_particles, __pyx_v_fEps, 0); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 56, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_r = __pyx_t_1;
   __pyx_t_1 = 0;
@@ -2728,7 +2733,7 @@ static PyObject *__pyx_pf_3fof_run(CYTHON_UNUSED PyObject *__pyx_self, PyArrayOb
     __Pyx_ErrFetch(&__pyx_type, &__pyx_value, &__pyx_tb);
     __Pyx_SafeReleaseBuffer(&__pyx_pybuffernd_particles.rcbuffer->pybuffer);
   __Pyx_ErrRestore(__pyx_type, __pyx_value, __pyx_tb);}
-  __Pyx_AddTraceback("fof.run", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("fof.fof.run", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   goto __pyx_L2;
   __pyx_L0:;
@@ -16556,7 +16561,7 @@ static PyBufferProcs __pyx_tp_as_buffer_array = {
 
 static PyTypeObject __pyx_type___pyx_array = {
   PyVarObject_HEAD_INIT(0, 0)
-  "fof.array", /*tp_name*/
+  "fof.fof.array", /*tp_name*/
   sizeof(struct __pyx_array_obj), /*tp_basicsize*/
   0, /*tp_itemsize*/
   __pyx_tp_dealloc_array, /*tp_dealloc*/
@@ -16662,7 +16667,7 @@ static PyMethodDef __pyx_methods_Enum[] = {
 
 static PyTypeObject __pyx_type___pyx_MemviewEnum = {
   PyVarObject_HEAD_INIT(0, 0)
-  "fof.Enum", /*tp_name*/
+  "fof.fof.Enum", /*tp_name*/
   sizeof(struct __pyx_MemviewEnum_obj), /*tp_basicsize*/
   0, /*tp_itemsize*/
   __pyx_tp_dealloc_Enum, /*tp_dealloc*/
@@ -16909,7 +16914,7 @@ static PyBufferProcs __pyx_tp_as_buffer_memoryview = {
 
 static PyTypeObject __pyx_type___pyx_memoryview = {
   PyVarObject_HEAD_INIT(0, 0)
-  "fof.memoryview", /*tp_name*/
+  "fof.fof.memoryview", /*tp_name*/
   sizeof(struct __pyx_memoryview_obj), /*tp_basicsize*/
   0, /*tp_itemsize*/
   __pyx_tp_dealloc_memoryview, /*tp_dealloc*/
@@ -17034,7 +17039,7 @@ static struct PyGetSetDef __pyx_getsets__memoryviewslice[] = {
 
 static PyTypeObject __pyx_type___pyx_memoryviewslice = {
   PyVarObject_HEAD_INIT(0, 0)
-  "fof._memoryviewslice", /*tp_name*/
+  "fof.fof._memoryviewslice", /*tp_name*/
   sizeof(struct __pyx_memoryviewslice_obj), /*tp_basicsize*/
   0, /*tp_itemsize*/
   __pyx_tp_dealloc__memoryviewslice, /*tp_dealloc*/
@@ -17099,7 +17104,7 @@ static PyTypeObject __pyx_type___pyx_memoryviewslice = {
 };
 
 static PyMethodDef __pyx_methods[] = {
-  {"run", (PyCFunction)__pyx_pw_3fof_1run, METH_VARARGS|METH_KEYWORDS, 0},
+  {"run", (PyCFunction)__pyx_pw_3fof_3fof_1run, METH_VARARGS|METH_KEYWORDS, 0},
   {0, 0, 0, 0}
 };
 
@@ -17200,8 +17205,8 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {0, 0, 0, 0, 0, 0, 0}
 };
 static int __Pyx_InitCachedBuiltins(void) {
+  __pyx_builtin_range = __Pyx_GetBuiltinName(__pyx_n_s_range); if (!__pyx_builtin_range) __PYX_ERR(0, 66, __pyx_L1_error)
   __pyx_builtin_ValueError = __Pyx_GetBuiltinName(__pyx_n_s_ValueError); if (!__pyx_builtin_ValueError) __PYX_ERR(1, 218, __pyx_L1_error)
-  __pyx_builtin_range = __Pyx_GetBuiltinName(__pyx_n_s_range); if (!__pyx_builtin_range) __PYX_ERR(1, 231, __pyx_L1_error)
   __pyx_builtin_RuntimeError = __Pyx_GetBuiltinName(__pyx_n_s_RuntimeError); if (!__pyx_builtin_RuntimeError) __PYX_ERR(1, 799, __pyx_L1_error)
   __pyx_builtin_MemoryError = __Pyx_GetBuiltinName(__pyx_n_s_MemoryError); if (!__pyx_builtin_MemoryError) __PYX_ERR(2, 146, __pyx_L1_error)
   __pyx_builtin_enumerate = __Pyx_GetBuiltinName(__pyx_n_s_enumerate); if (!__pyx_builtin_enumerate) __PYX_ERR(2, 149, __pyx_L1_error)
@@ -17568,14 +17573,14 @@ PyMODINIT_FUNC PyInit_fof(void)
   #if PY_MAJOR_VERSION < 3 && (__PYX_DEFAULT_STRING_ENCODING_IS_ASCII || __PYX_DEFAULT_STRING_ENCODING_IS_DEFAULT)
   if (__Pyx_init_sys_getdefaultencoding_params() < 0) __PYX_ERR(0, 1, __pyx_L1_error)
   #endif
-  if (__pyx_module_is_main_fof) {
+  if (__pyx_module_is_main_fof__fof) {
     if (PyObject_SetAttrString(__pyx_m, "__name__", __pyx_n_s_main) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
   }
   #if PY_MAJOR_VERSION >= 3
   {
     PyObject *modules = PyImport_GetModuleDict(); if (unlikely(!modules)) __PYX_ERR(0, 1, __pyx_L1_error)
-    if (!PyDict_GetItemString(modules, "fof")) {
-      if (unlikely(PyDict_SetItemString(modules, "fof", __pyx_m) < 0)) __PYX_ERR(0, 1, __pyx_L1_error)
+    if (!PyDict_GetItemString(modules, "fof.fof")) {
+      if (unlikely(PyDict_SetItemString(modules, "fof.fof", __pyx_m) < 0)) __PYX_ERR(0, 1, __pyx_L1_error)
     }
   }
   #endif
@@ -17642,7 +17647,7 @@ PyMODINIT_FUNC PyInit_fof(void)
   if (__Pyx_patch_abc() < 0) __PYX_ERR(0, 1, __pyx_L1_error)
   #endif
 
-  /* "fof.pyx":4
+  /* "fof/fof.pyx":4
  * 
  * # type declarations
  * import numpy as np             # <<<<<<<<<<<<<<
@@ -17654,7 +17659,7 @@ PyMODINIT_FUNC PyInit_fof(void)
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_np, __pyx_t_1) < 0) __PYX_ERR(0, 4, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "fof.pyx":7
+  /* "fof/fof.pyx":7
  * cimport numpy as np
  * 
  * DTYPE = np.float             # <<<<<<<<<<<<<<
@@ -17669,7 +17674,7 @@ PyMODINIT_FUNC PyInit_fof(void)
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_DTYPE, __pyx_t_2) < 0) __PYX_ERR(0, 7, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "fof.pyx":1
+  /* "fof/fof.pyx":1
  * cimport cfof             # <<<<<<<<<<<<<<
  * 
  * # type declarations
@@ -17830,11 +17835,11 @@ PyMODINIT_FUNC PyInit_fof(void)
   __Pyx_XDECREF(__pyx_t_2);
   if (__pyx_m) {
     if (__pyx_d) {
-      __Pyx_AddTraceback("init fof", __pyx_clineno, __pyx_lineno, __pyx_filename);
+      __Pyx_AddTraceback("init fof.fof", __pyx_clineno, __pyx_lineno, __pyx_filename);
     }
     Py_DECREF(__pyx_m); __pyx_m = 0;
   } else if (!PyErr_Occurred()) {
-    PyErr_SetString(PyExc_ImportError, "init fof");
+    PyErr_SetString(PyExc_ImportError, "init fof.fof");
   }
   __pyx_L0:;
   __Pyx_RefNannyFinishContext();
@@ -17862,6 +17867,20 @@ end:
     return (__Pyx_RefNannyAPIStruct *)r;
 }
 #endif
+
+/* GetBuiltinName */
+static PyObject *__Pyx_GetBuiltinName(PyObject *name) {
+    PyObject* result = __Pyx_PyObject_GetAttrStr(__pyx_b, name);
+    if (unlikely(!result)) {
+        PyErr_Format(PyExc_NameError,
+#if PY_MAJOR_VERSION >= 3
+            "name '%U' is not defined", name);
+#else
+            "name '%.200s' is not defined", PyString_AS_STRING(name));
+#endif
+    }
+    return result;
+}
 
 /* BufferFormatCheck */
 static CYTHON_INLINE int __Pyx_IsLittleEndian(void) {
@@ -18745,20 +18764,6 @@ static CYTHON_INLINE int __Pyx_ArgTypeTest(PyObject *obj, PyTypeObject *type, in
     }
     __Pyx_RaiseArgumentTypeInvalid(name, obj, type);
     return 0;
-}
-
-/* GetBuiltinName */
-  static PyObject *__Pyx_GetBuiltinName(PyObject *name) {
-    PyObject* result = __Pyx_PyObject_GetAttrStr(__pyx_b, name);
-    if (unlikely(!result)) {
-        PyErr_Format(PyExc_NameError,
-#if PY_MAJOR_VERSION >= 3
-            "name '%U' is not defined", name);
-#else
-            "name '%.200s' is not defined", PyString_AS_STRING(name));
-#endif
-    }
-    return result;
 }
 
 /* PyObjectCall */

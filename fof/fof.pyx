@@ -13,8 +13,8 @@ cdef extern from "math.h":
     float INFINITY
 
 # fof wrapper functions
-cdef kdInit(cfof.KD* kd, int nBucket, float* fPeriod):
-    cfof.kdInit(kd, nBucket, fPeriod)
+cdef kdInit(cfof.KD* kd, int nBucket, float* fPeriod, float* fCenter):
+    cfof.kdInit(kd, nBucket, fPeriod, fCenter)
 
 cdef kdBuildTree(cfof.KD kd): 
     cfof.kdBuildTree(kd)
@@ -55,18 +55,20 @@ cdef populate_arrays(cfof.KD kd, np.ndarray[cfof.PARTICLE] particles):
 # main function called from python
 cpdef run(np.ndarray[cfof.PARTICLE] particles, float fEps):
     cdef cfof.KD kd
-    cdef float fPeriod[3]
+    cdef float fPeriod[3], fCenter[3]
     cdef int nBucket = 16
     cdef int res
     cdef int nGroup 
     cdef int sec, usec
     cdef int nMembers = 8
-    fPeriod[0] = INFINITY
-    fPeriod[1] = INFINITY
-    fPeriod[2] = INFINITY
+    cdef int i
+
+    for i in range(3): 
+        fPeriod[i] = INFINITY
+        fCenter[i] = 0.0
 
     # initialize
-    kdInit(&kd, nBucket, fPeriod)
+    kdInit(&kd, nBucket, fPeriod, fCenter)
 
     # put the arrays into the kd context
     populate_arrays(kd, particles)
