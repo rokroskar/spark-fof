@@ -28,18 +28,22 @@ def decode_gid(gid, bits = 32):
 
 
 # define wrapped cython functions
-get_bin_cython = spark_cython('spark_fof_c', 'get_bin_cython')
-get_particle_bins_cython = spark_cython('spark_fof_c', 'get_particle_bins_cython')
-rect_buffer_zone_cython = spark_cython('spark_fof_c', 'rect_buffer_zone_cython')
-partition_particles_cython = spark_cython('spark_fof_c', 'partition_particles_cython')
-run_fof = spark_cython('fof', 'run')
+#get_bin_cython = spark_cython('spark_fof_c', 'get_bin_cython')
+#get_particle_bins_cython = spark_cython('spark_fof_c', 'get_particle_bins_cython')
+#rect_buffer_zone_cython = spark_cython('spark_fof_c', 'rect_buffer_zone_cython')
+#partition_particles_cython = spark_cython('spark_fof_c', 'partition_particles_cython')
+#run_fof = spark_cython('fof', 'run')
+
+from spark_fof_c import get_bin_cython, get_particle_bins_cython, rect_buffer_zone_cython, partition_particles_cython
+
+import fof
 
 class FOFAnalyzer():
-    def __init__(self, sc, N, tau, particle_rdd):
+    def __init__(self, sc, N, tau, particle_rdd, mins, maxs):
         self.sc = sc
         self.N = N
         self.tau = tau
-        self.domain_containers = setup_domain(N, tau, [1,1,1], [-1,-1,-1])
+        self.domain_containers = setup_domain(N, tau, maxs, mins)
 
         self.particle_rdd = particle_rdd
 
@@ -77,7 +81,7 @@ class FOFAnalyzer():
                   .map(pid_gid)
                   .collectAsMap())
 
-        pg_map_b = sc.broadcast(pg_map)
+        pg_map_b = sc.broadcast(set(pg_map.keys()))
 
         # generate the "local" groups mapping -- this will only link groups among neighboring domains
         # this proceeds in a few stages:
@@ -87,10 +91,10 @@ class FOFAnalyzer():
         # 3. from each group list, generate a (g, g') key, value pair RDD where
         # g maps onto g'
 
-        pg_map_keys = pg_map_b.value.keys()
+        N_partitions = sc.defaultParallelism*20
 
         groups_map = (particle_rdd.map(pid_gid)
-                                  .filter(lambda (pid, gid): pid in pg_map_keys)
+                                  .filter(lambda (pid, gid): pid in pg_map_b.value)
                                   .aggregateByKey([], lambda l, g: l + [g], lambda a, b: sorted(a + b))
                                   .values()
                                   .flatMap(lambda gs: [(g, gs[0]) for g in gs[1:]])).collect()
@@ -186,46 +190,12 @@ def setup_domain(N, tau, maxes, mins):
     return domain_containers
 
 
-@total_ordering
-class groupID:
-    def __init__(self, local_id, partition):
-        self.local_id = local_id
-        self.partition = partition
-
-    def __repr__(self):
-        return "id={0} cid={1}".format(self.local_id, self.partition)
-
-    def __eq__(self, other):
-        return (self.local_id == other.local_id) & (self.partition == other.partition)
-
-    def __lt__(self, other):
-        return self.partition < other.partition
-
-    def __hash__(self):
-        return hash(self.__repr__())
-
-
-class Particle:
-    def __init__(self, x, y, pid, gid):
-        self.x = x
-        self.y = y
-        self.pid = pid
-        self.gid = gid
-
-    def __repr__(self):
-        return "x={0} y={1} pid={2} gid=({3})".format(self.x, self.y, self.pid, self.gid)
-
-
-def partition_particles(particles, domain_containers, tau):
+def partition_particles(particles, domain_containers, tau, mins, maxs):
     """Copy particles in buffer areas to the partitions that will need them"""
 
     N = domain_containers[0].N
 
     trans = np.array([[-tau, 0, 0], [0,-tau, 0], [0, 0, -tau], [-tau, -tau, 0], [0, -tau, -tau], [-tau,-tau,-tau]])
-
-    mins = np.array([-1,-1,-1], dtype=np.float)
-    maxs = np.array([1,1,1], dtype=np.float)
-
 
     for p in particles:
         pos = p['pos']
@@ -306,12 +276,14 @@ def remap_gid(p, gid_map):
     else: 
         return p
 
+
 def remap_gid_partition(particles, gid_map):
     p_arr = np.fromiter(particles, pdt)
     groups = np.unique(p_arr['iGroup'])
+
     for g in groups:
         inds = np.where(p_arr['iGroup'] == g)[0]
-        if g in gid_map.keys():
+        if g in gid_map:
             p_arr['iGroup'][inds] = gid_map[g]
     return p_arr
 

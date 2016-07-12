@@ -65,7 +65,7 @@ def rect_buffer_zone_cython(np.ndarray[float] point, rect):
     return (in_main != in_buffer)
 
 
-def partition_particles_cython(particles, domain_containers, tau):
+def partition_particles_cython(particles, domain_containers, tau, dom_mins, dom_maxs):
     """Copy particles in buffer areas to the partitions that will need them"""
     cdef int N = domain_containers[0].N
     cdef int nparts, i
@@ -74,9 +74,6 @@ def partition_particles_cython(particles, domain_containers, tau):
     nparts = len(p_arr)
     
     trans = np.array([[-tau, 0, 0], [0,-tau, 0], [0, 0, -tau], [-tau, -tau, 0], [0, -tau, -tau], [-tau,-tau,-tau]], dtype=np.float32)
-
-    dom_mins = np.array([-1.,-1.,-1.])
-    dom_maxs = np.array([1., 1., 1.])
 
     for i in range(nparts):
         point = p_arr['pos'][i]

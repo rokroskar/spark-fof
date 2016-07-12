@@ -9,6 +9,8 @@ DTYPE = np.float
 ctypedef np.float_t DTYPE_f
 ctypedef np.int_t DTYPE_i
 
+cdef extern from "math.h":
+    float INFINITY
 
 # fof wrapper functions
 cdef kdInit(cfof.KD* kd, int nBucket, float* fPeriod):
@@ -59,9 +61,9 @@ cpdef run(np.ndarray[cfof.PARTICLE] particles, float fEps):
     cdef int nGroup 
     cdef int sec, usec
     cdef int nMembers = 8
-    fPeriod[0] = 2
-    fPeriod[1] = 2
-    fPeriod[2] = 2
+    fPeriod[0] = INFINITY
+    fPeriod[1] = INFINITY
+    fPeriod[2] = INFINITY
 
     # initialize
     kdInit(&kd, nBucket, fPeriod)
