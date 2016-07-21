@@ -1,3 +1,9 @@
+cdef inline bint within_limits(float* mins, float* maxs, float* point): 
+    cdef bint inside = 1
+    for i in range(3): 
+        inside *= mins[i] < point[i] < maxs[i]
+    return inside
+
 cdef extern from "kd.h":
     cdef struct Particle:
         float r[3]
