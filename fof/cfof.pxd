@@ -1,3 +1,5 @@
+cimport numpy as np
+
 cdef inline bint within_limits(float* mins, float* maxs, float* point): 
     cdef bint inside = 1
     for i in range(3): 
@@ -7,8 +9,8 @@ cdef inline bint within_limits(float* mins, float* maxs, float* point):
 cdef extern from "kd.h":
     cdef struct Particle:
         float r[3]
-        int iGroup
-        int iOrder
+        np.int64_t iGroup
+        np.int32_t iOrder
 
     ctypedef Particle PARTICLE
 

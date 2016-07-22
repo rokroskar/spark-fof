@@ -24,8 +24,8 @@ typedef struct Particle {
 	float fMass;
 	float v[3];
 #endif
-	int iGroup;
-	int iOrder;
+	int64_t iGroup;
+	int32_t iOrder;
 	} PARTICLE;
 
 typedef struct bndBound {

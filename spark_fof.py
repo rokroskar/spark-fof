@@ -3,10 +3,6 @@ import numpy as np
 from math import floor, ceil
 from functools import total_ordering
 import networkx as nx
-from spark_util import spark_cython
-
-# particle data type definition
-pdt = np.dtype([('pos','f4', 3), ('iGroup', 'i4'), ('iOrder', 'i4')])
 
 # encode a 32-bit partition ID (pid) and 32-bit cluster ID (cid) into one 64-bit integer
 def encode_gid(pid, cid, bits=32):
@@ -34,7 +30,12 @@ def decode_gid(gid, bits = 32):
 #partition_particles_cython = spark_cython('spark_fof_c', 'partition_particles_cython')
 #run_fof = spark_cython('fof', 'run')
 
-from spark_fof_c import get_bin_cython, get_particle_bins_cython, rect_buffer_zone_cython, partition_particles_cython
+from spark_fof_c import get_bin_cython, \
+                        get_particle_bins_cython, \
+                        rect_buffer_zone_cython, \
+                        partition_particles_cython, \
+                        remap_gid_partition_cython, \
+                        pdt
 
 import fof
 
@@ -174,7 +175,7 @@ class FOFAnalyzer():
         for l in range(level, -1, -1):
             m = self.get_level_map(l)
             m_b = self.sc.broadcast(m)
-            particle_rdd = particle_rdd.mapPartitions(lambda particles: remap_gid_partition(particles, m_b.value))
+            particle_rdd = particle_rdd.mapPartitions(lambda particles: remap_gid_partition_cython(particles, m_b.value))
 
         return particle_rdd
 
@@ -275,18 +276,6 @@ def remap_gid(p, gid_map):
         return p_c
     else: 
         return p
-
-
-def remap_gid_partition(particles, gid_map):
-    p_arr = np.fromiter(particles, pdt)
-    groups = np.unique(p_arr['iGroup'])
-
-    for g in groups:
-        inds = np.where(p_arr['iGroup'] == g)[0]
-        if g in gid_map:
-            p_arr['iGroup'][inds] = gid_map[g]
-    return p_arr
-
 
 def set_local_group(partition, particles):
     """Set an initial partition for the group ID"""

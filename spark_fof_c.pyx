@@ -10,7 +10,7 @@ DTYPE = np.float
 ctypedef np.float_t DTYPE_f
 ctypedef np.int_t DTYPE_i
 
-pdt = np.dtype([('pos','f4', 3), ('iGroup', 'i4'), ('iOrder', 'i4')])
+pdt = np.dtype([('pos', 'f4', 3), ('iGroup', 'i8'), ('iOrder', 'i4')], align=True)
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -89,7 +89,7 @@ def partition_particles_cython(particles, domain_containers, tau, dom_mins, dom_
             for t in trans: 
                 #x,y,z = coords + t
                 trans_bin = get_bin_cython(coords+t, 2**N, dom_mins,dom_maxs)
-                if trans_bin not in my_bins and trans_bin > 0:
+                if trans_bin not in my_bins and trans_bin >= 0:
                     my_bins.append(trans_bin)
                     yield (trans_bin, p_arr[i])
 
@@ -109,3 +109,15 @@ cpdef in_rectangle_cython(np.ndarray[DTYPE_f] mins, np.ndarray[DTYPE_f] maxs, np
     for i in range(3): 
         res *= mins[i] < point[i] < maxs[i]
     return res
+
+def remap_gid_partition_cython(particles, gid_map):
+    cdef np.int64_t g
+    
+    p_arr = np.fromiter(particles, pdt)
+    
+    for i in range(len(p_arr)):
+        g = p_arr['iGroup'][i]
+        if g in gid_map:
+            p_arr['iGroup'][i] = gid_map[g]
+    return p_arr
+
