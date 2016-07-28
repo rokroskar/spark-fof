@@ -1,8 +1,5 @@
 cimport cfof
 
-from cfof cimport within_limits
-from cpython cimport array
-
 # type declarations
 import numpy as np
 cimport numpy as np
@@ -36,12 +33,6 @@ cdef kdOrder(cfof.KD kd):
 
 cdef kdFinish(cfof.KD kd):
     cfof.kdFinish(kd)
-
-cpdef call_check_within(np.ndarray[float] mins, np.ndarray[float] maxs, np.ndarray[float] point):
-    cdef array.array mins_arr = array.array('f', mins)
-    cdef array.array maxs_arr = array.array('f', maxs)
-    cdef array.array point_arr = array.array('f', point)
-    return within_limits(mins_arr.data.as_floats, maxs_arr.data.as_floats, point_arr.data.as_floats)
 
 #
 # cython functions for working with kd/fof

@@ -37,7 +37,7 @@ from spark_fof_c import get_bin_cython, \
                         remap_gid_partition_cython, \
                         pdt
 
-import fof
+from fof import fof
 
 class FOFAnalyzer():
     def __init__(self, sc, N, tau, particle_rdd, mins, maxs):
