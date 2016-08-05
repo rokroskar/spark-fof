@@ -21,7 +21,7 @@ pdt = np.dtype([('pos', 'f4', 3), ('iGroup', 'i8'), ('iOrder', 'i4')], align=Tru
 @cython.wraparound(False)
 @cython.nonecheck(False)
 @cython.cdivision(True)
-cpdef get_bin_cython(np.ndarray[float] point, int nbins, np.ndarray[DTYPE_f] mins, np.ndarray[DTYPE_f] maxs):
+cpdef get_bin_cython(np.ndarray[np.float32_t] point, int nbins, np.ndarray[DTYPE_f] mins, np.ndarray[DTYPE_f] maxs):
     cdef float dx, dy, dz, xbin, ybin, zbin
     cdef bint in_bounds = 1
     cdef int ndim = point.shape[0]
@@ -70,10 +70,11 @@ def rect_buffer_zone_cython(np.ndarray[float] point, rect):
     return (in_main != in_buffer)
 
 
+
 def partition_particles_cython(particle_arrays, domain_containers, float tau, dom_mins, dom_maxs):
     """Copy particles in buffer areas to the partitions that will need them"""
     cdef int N = domain_containers[0].N
-    cdef int nparts, i
+    cdef unsigned int nparts, i
 
     for p_arr in particle_arrays:
         nparts = len(p_arr)
