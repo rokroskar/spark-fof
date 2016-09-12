@@ -31,11 +31,9 @@ def decode_gid(gid, bits = 32):
 #run_fof = spark_cython('fof', 'run')
 
 from spark_fof_c import get_bin_cython, \
-                        get_particle_bins_cython, \
-                        rect_buffer_zone_cython, \
-                        partition_particles_cython, \
-                        remap_gid_partition_cython, \
-                        pdt
+                         rect_buffer_zone_cython, \
+                         remap_gid_partition_cython, \
+                         pdt
 
 from fof import fof
 
@@ -75,14 +73,14 @@ class FOFAnalyzer():
         domain_containers = self.domain_containers
         sc = self.sc
 
-        pg_map = (particle_rdd.mapPartitionsWithIndex(
-                  lambda index, data: get_buffer_particles(index,
-                                                           data,
-                                                           domain_containers, level))
-                  .map(pid_gid)
-                  .collectAsMap())
+        # pg_map = (particle_rdd.mapPartitionsWithIndex(
+        #           lambda index, data: get_buffer_particles(index,
+        #                                                    data,
+        #                                                    domain_containers, level))
+        #           .map(pid_gid)
+        #           .collectAsMap())
 
-        pg_map_b = sc.broadcast(set(pg_map.keys()))
+        # pg_map_b = sc.broadcast(set(pg_map.keys()))
 
         # generate the "local" groups mapping -- this will only link groups among neighboring domains
         # this proceeds in a few stages:
@@ -94,11 +92,17 @@ class FOFAnalyzer():
 
         N_partitions = sc.defaultParallelism*20
 
-        groups_map = (particle_rdd.map(pid_gid)
-                                  .filter(lambda (pid, gid): pid in pg_map_b.value)
-                                  .aggregateByKey([], lambda l, g: l + [g], lambda a, b: sorted(a + b))
-                                  .values()
-                                  .flatMap(lambda gs: [(g, gs[0]) for g in gs[1:]])).collect()
+        # groups_map = (particle_rdd.map(pid_gid)
+        #                           .filter(lambda (pid, gid): pid in pg_map_b.value)
+        #                           .aggregateByKey([], lambda l, g: l + [g], lambda a, b: sorted(a + b))
+        #                           .values()
+        #                           .flatMap(lambda gs: [(g, gs[0]) for g in gs[1:]])).collect()
+
+        groups_map = (particle_rdd.flatMap(lambda p: p[np.where(p['is_ghost'])[0]])
+                     .map(pid_gid)
+                     .aggregateByKey([], lambda l, g: l + [g], lambda a, b: sorted(a + b))
+                     .values()
+                     .flatMap(lambda gs: [(g, gs[0]) for g in gs[1:]])).collect()
 
         return groups_map
 
@@ -258,7 +262,7 @@ def get_buffer_particles(partition, particles, domain_containers, level=0):
     for i in range(level):
         my_rect = my_rect.parent
 
-    for p in particles:
+    for p in np.concatenate(list(particles)):
         if my_rect.in_buffer_zone(p):
             yield p
 
@@ -370,4 +374,4 @@ class DomainRectangle(Rectangle):
 
     def in_buffer_zone(self, p):
         """Determine whether a particle is in the buffer zone"""
-        return rect_buffer_zone_cython(p['pos'], self)
+        return rect_buffer_zone_cython(p['pos'], self.mins, self.maxes, self.bufferRectangle.mins, self.bufferRectangle.maxes)

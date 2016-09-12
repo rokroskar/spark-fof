@@ -1,3 +1,5 @@
+#include <stdbool.h>
+
 #ifndef KD_HINCLUDED
 #define KD_HINCLUDED
 
@@ -24,8 +26,9 @@ typedef struct Particle {
 	float fMass;
 	float v[3];
 #endif
-	int64_t iGroup;
+    int32_t is_ghost;
 	int32_t iOrder;
+    int64_t iGroup;
 	} PARTICLE;
 
 typedef struct bndBound {

@@ -1,10 +1,14 @@
 cimport numpy as np
+from libcpp cimport bool
 
 cdef extern from "kd.h":
     cdef struct Particle:
         float r[3]
-        np.int64_t iGroup
-        np.int32_t iOrder
+        int is_ghost
+        int iOrder
+        long iGroup
+
+        
 
     ctypedef Particle PARTICLE
 
