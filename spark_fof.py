@@ -3,6 +3,8 @@ import numpy as np
 from math import floor, ceil
 from functools import total_ordering
 import networkx as nx
+from collections import defaultdict
+
 
 # encode a 32-bit partition ID (pid) and 32-bit cluster ID (cid) into one 64-bit integer
 def encode_gid(pid, cid, bits=32):
@@ -33,6 +35,7 @@ def decode_gid(gid, bits = 32):
 from spark_fof_c import get_bin_cython, \
                          rect_buffer_zone_cython, \
                          remap_gid_partition_cython, \
+                         relabel_groups, \
                          pdt
 
 from fof import fof
@@ -176,12 +179,68 @@ class FOFAnalyzer():
         particle_rdd = self.particle_rdd
         domain_containers = self.domain_containers
 
+        def remap_partition(particles, gmap):
+            for p_arr in particles: 
+                remap_gid_partition_cython(p_arr, gmap)
+                yield p_arr
+
         for l in range(level, -1, -1):
             m = self.get_level_map(l)
             m_b = self.sc.broadcast(m)
-            particle_rdd = particle_rdd.mapPartitions(lambda particles: remap_gid_partition_cython(particles, m_b.value))
+            merged_rdd = particle_rdd.mapPartitions(lambda particles: remap_partition(particles, m_b.value))
 
-        return particle_rdd
+        self.merged_rdd = merged_rdd
+
+        return merged_rdd
+
+
+    def finalize_groups(self):
+        """
+        Produce a mapping of group IDs such that group IDs are in the 
+        order of group size and relabel the particle groups
+
+        Returns a list of relabeled group IDs and particle counts.
+        """
+
+        # define helper functions
+        def count_groups(particle_array, nMinMembers = 8):
+            group_ids, counts = np.unique(particle_array['iGroup'], return_counts=True)
+            good = np.where(counts >= nMinMembers)[0]
+            return group_ids[good], counts[good]
+
+        def partition_count_groups(particle_arrays, nMinMembers=8):
+            count_dict = defaultdict(int)
+            for particle_array in particle_arrays:
+                gs, counts = count_groups(particle_array, nMinMembers)
+                for i in xrange(len(gs)): 
+                    count_dict[gs[i]] += counts[i] 
+            yield count_dict
+
+        def combine_dicts(d1, d2): 
+            for k,v in d2.iteritems(): 
+                d1[k] += v
+            return d1
+
+        def relabel_groups_wrapper(p_arr, groups_map): 
+            relabel_groups(p_arr, groups_map)
+            return p_arr            
+
+        merged_rdd = self.merged_rdd
+
+        filtered_groups = merged_rdd.mapPartitions(lambda p: partition_count_groups(p,8)).reduce(combine_dicts)
+
+        groups_map = {}
+
+        for i, (g,c) in enumerate(sorted(filtered_groups.items(), key = lambda (x,y): y, reverse=True)): 
+            groups_map[g] = i+1
+
+        self.merged_rdd = merged_rdd.map(lambda p_arr: relabel_groups_wrapper(p_arr, groups_map))
+
+        groups_map_inv = {v:k for (k,v) in groups_map.iteritems()}
+
+        self.sorted_groups = [(i,filtered_groups[groups_map_inv[i]]) for i in range(1,len(filtered_groups)+1)]
+
+        return merged_rdd
 
 
 def setup_domain(N, tau, maxes, mins):
