@@ -1,20 +1,19 @@
-cimport numpy as np
 from libcpp cimport bool
 
+#
+# types
+#
 cdef extern from "kd.h":
     cdef struct Particle:
         float r[3]
         int is_ghost
         int iOrder
         long iGroup
-
-        
-
     ctypedef Particle PARTICLE
+
 
     cdef struct kdNode:
         pass
-
     ctypedef kdNode KDN
 
 
@@ -39,9 +38,11 @@ cdef extern from "kd.h":
         int nGroup
         int uSecond
         int uMicro
-        
     ctypedef kdContext* KD 
 
+#
+# functions
+#
     int kdInit(KD*, int, float*, float*)
     void kdBuildTree(KD)
     void kdTime(KD, int*, int*)

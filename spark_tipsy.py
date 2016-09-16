@@ -17,7 +17,7 @@ class dictAdd(AccumulatorParam):
 # define the data type
 pdt_tipsy = np.dtype([('mass', 'f4'),('pos', 'f4', 3),('vel', 'f4', 3), ('eps', 'f4'), ('phi', 'f4')])
 
-from spark_fof import pdt
+from spark_fof_c import pdt
 
 def read_tipsy_output(sc, filename, chunksize = 2048): 
     """

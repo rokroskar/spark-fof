@@ -4,53 +4,153 @@ from math import floor, ceil
 from functools import total_ordering
 import networkx as nx
 from collections import defaultdict
+import spark_tipsy
+import pyspark
 
+from fof import fof
 
-# encode a 32-bit partition ID (pid) and 32-bit cluster ID (cid) into one 64-bit integer
-def encode_gid(pid, cid, bits=32):
-    if bits == 32: 
-        res = np.int64(int(np.binary_repr(pid,width=32)+np.binary_repr(cid,width=32),2))
-    elif bits == 16:
-        res = np.int32(int(np.binary_repr(pid,width=16)+np.binary_repr(cid,width=16),2))
-    else: 
-        raise RuntimeError('Group encoding must use either 16 or 32 bit integers')
-    return res
+import spark_fof_c
 
-# decode a two-part 64-bit integer into a 32-bit partition ID (pid) and 32-bit cluster ID (cid)
-def decode_gid(gid, bits = 32):
-    if (bits is not 32) and (bits is not 16): 
-        raise RuntimeError('Group encoding must use either 16 or 32 bit integers')
-    pid = gid >> bits
-    cid = gid - (pid << bits)
-    return pid,cid
-
-
-# define wrapped cython functions
-#get_bin_cython = spark_cython('spark_fof_c', 'get_bin_cython')
-#get_particle_bins_cython = spark_cython('spark_fof_c', 'get_particle_bins_cython')
-#rect_buffer_zone_cython = spark_cython('spark_fof_c', 'rect_buffer_zone_cython')
-#partition_particles_cython = spark_cython('spark_fof_c', 'partition_particles_cython')
-#run_fof = spark_cython('fof', 'run')
-
-from spark_fof_c import get_bin_cython, \
-                         rect_buffer_zone_cython, \
-                         remap_gid_partition_cython, \
+from spark_fof_c import  remap_gid_partition_cython, \
                          relabel_groups, \
+                         ghost_mask, \
                          pdt
 
 from fof import fof
 
 class FOFAnalyzer():
-    def __init__(self, sc, N, tau, particle_rdd, mins, maxs):
+    def __init__(self, sc, particles, nMinMembers, nBins, tau, mins=[-.5,-.5,-.5], maxs=[.5,.5,.5]):
         self.sc = sc
-        self.N = N
+        self.nBins = nBins
         self.tau = tau
-        self.domain_containers = setup_domain(N, tau, maxs, mins)
+        self.mins = mins
+        self.maxs = maxs
+        self.nMinMembers = nMinMembers
 
-        self.particle_rdd = particle_rdd
+        domain_containers = setup_domain(nBins, tau, maxs, mins)
 
-    def run_local_fof(self):
-        pass
+        self.domain_containers = domain_containers
+
+        if isinstance(particles, str): 
+            # we assume we have a file location
+            p_rdd = spark_tipsy.read_tipsy_output(sc, particles, chunksize=1024*4)
+            self.particle_rdd = p_rdd
+        
+        elif isinstance(particles, pyspark.rdd.RDD):
+            self.particle_rdd = particles
+
+        # set up RDD place-holders
+        self._partitioned_rdd = None
+        self._fof_rdd = None
+        self._merged_rdd = None
+        self._final_fof_rdd = None
+        self._groups = None
+
+    # define RDD properties 
+    @property
+    def partitioned_rdd(self):
+        if self._partitioned_rdd is None: 
+            self._partitioned_rdd = self.partition_particles()
+        return self._partitioned_rdd
+
+    @property
+    def fof_rdd(self):
+        if self._fof_rdd is None:
+            self._fof_rdd = self.run_fof()
+        return self._fof_rdd
+
+    @property
+    def merged_rdd(self):
+        if self._merged_rdd is None:
+            self._merged_rdd = self.merge_groups()
+        return self._merged_rdd
+    
+
+    @property
+    def final_fof_rdd(self):
+        if self._final_fof_rdd is None: 
+            self._final_fof_rdd = self.finalize_groups()
+        return self._final_fof_rdd
+
+    
+    @property
+    def groups(self):
+        if self._groups is None: 
+            self.final_fof_rdd
+        return self._groups
+
+    
+    
+    def run_all(self): 
+        """
+        Run FOF, merge the groups across domains and finalize the group IDs,
+        dropping ones that don't fit criteria.
+        """
+
+
+
+    def partition_particles(self): 
+        """Partitions the particles for running local FOF"""
+
+        Npartitions = len(self.domain_containers)
+        tau, domain_containers, dom_mins, dom_maxs = self.tau, self.domain_containers, self.mins, self.maxs
+
+        # set up domain limit arrays
+        N = domain_containers[0].N
+        n_containers = len(domain_containers)
+        mins = np.zeros((n_containers, 3))
+        maxs = np.zeros((n_containers, 3))
+        mins_buff = np.zeros((n_containers, 3))
+        maxs_buff = np.zeros((n_containers, 3))
+
+        for i in range(n_containers): 
+            mins[i] = domain_containers[i].mins
+            maxs[i] = domain_containers[i].maxes
+            mins_buff[i] = domain_containers[i].bufferRectangle.mins
+            maxs_buff[i] = domain_containers[i].bufferRectangle.maxes
+
+        # set up a helper function for calling the cython code
+        def partition_wrapper(particle_iterator): 
+            for particle_array in particle_iterator: 
+                # first mark the ghosts
+                ghost_mask(particle_array, tau, N, mins, maxs, mins_buff, maxs_buff, dom_mins, dom_maxs)
+                res = spark_fof_c.new_partitioning_cython(particle_array, domain_containers, tau, dom_mins, dom_maxs)
+                for r in res: 
+                    yield r
+
+        partitioned_rdd = (self.particle_rdd.mapPartitions(partition_wrapper)).partitionBy(Npartitions).values()
+
+        self._partitioned_rdd = partitioned_rdd
+
+        return partitioned_rdd
+
+    def run_fof(self):
+        """
+        Run FOF on the particles 
+
+        First does a partitioning step to put particles in their respective domain containers
+        """
+        tau = self.tau
+
+        def run_local_fof(partition_index, particle_iter, tau, nMinMembers, batch_size=1024*256): 
+            """Helper function to run FOF locally on the individual partitions"""
+            part_arr = np.hstack(particle_iter)
+            if len(part_arr)>0:
+                # run fof
+                fof.run(part_arr, tau, nMinMembers)
+                
+                # encode the groupID  
+                spark_fof_c.encode_gid(part_arr, partition_index)
+        
+            for arr in np.split(part_arr, range(batch_size,len(part_arr),batch_size)):
+                yield arr
+
+        partitioned_rdd = self.partitioned_rdd
+
+        fof_rdd = partitioned_rdd.mapPartitionsWithIndex(lambda index, particles: run_local_fof(index, particles, tau, 1)).cache()
+
+        return fof_rdd
+
 
     def get_gid_map(self, level=0):
         """
@@ -72,40 +172,17 @@ class FOFAnalyzer():
 
         list of tuples of (src,dst) group ID mappings 
         """
-        particle_rdd = self.particle_rdd
+        fof_rdd = self.fof_rdd
         domain_containers = self.domain_containers
         sc = self.sc
 
-        # pg_map = (particle_rdd.mapPartitionsWithIndex(
-        #           lambda index, data: get_buffer_particles(index,
-        #                                                    data,
-        #                                                    domain_containers, level))
-        #           .map(pid_gid)
-        #           .collectAsMap())
-
-        # pg_map_b = sc.broadcast(set(pg_map.keys()))
-
-        # generate the "local" groups mapping -- this will only link groups among neighboring domains
-        # this proceeds in a few stages:
-        #
-        # 1. filter only the ghost particles and return a (pid, gid) key,value pair RDD
-        # 2. for each ghost particle pid, aggregate together all of its groups
-        # 3. from each group list, generate a (g, g') key, value pair RDD where
-        # g maps onto g'
-
         N_partitions = sc.defaultParallelism*20
 
-        # groups_map = (particle_rdd.map(pid_gid)
-        #                           .filter(lambda (pid, gid): pid in pg_map_b.value)
-        #                           .aggregateByKey([], lambda l, g: l + [g], lambda a, b: sorted(a + b))
-        #                           .values()
-        #                           .flatMap(lambda gs: [(g, gs[0]) for g in gs[1:]])).collect()
-
-        groups_map = (particle_rdd.flatMap(lambda p: p[np.where(p['is_ghost'])[0]])
-                     .map(pid_gid)
-                     .aggregateByKey([], lambda l, g: l + [g], lambda a, b: sorted(a + b))
-                     .values()
-                     .flatMap(lambda gs: [(g, gs[0]) for g in gs[1:]])).collect()
+        groups_map = (fof_rdd.flatMap(lambda p: p[np.where(p['is_ghost'])[0]])
+                             .map(pid_gid)
+                             .aggregateByKey([], lambda l, g: l + [g], lambda a, b: sorted(a + b))
+                             .values()
+                             .flatMap(lambda gs: [(g, gs[0]) for g in gs[1:]])).collect()
 
         return groups_map
 
@@ -128,9 +205,6 @@ class FOFAnalyzer():
                need to be considered. Default is 0, meaning that the merging 
                takes place at the finest sub-domain level. 
         """
-        particle_rdd = self.particle_rdd
-        domain_containers = self.domain_containers
-
         # get the initial group mapping across sub-domains just based on
         # particle IDs
         groups_map = self.get_gid_map(level)
@@ -176,7 +250,7 @@ class FOFAnalyzer():
                need to be considered. Default is 0, meaning that the merging 
                takes place at the finest sub-domain level. 
         """
-        particle_rdd = self.particle_rdd
+        fof_rdd = self.fof_rdd
         domain_containers = self.domain_containers
 
         def remap_partition(particles, gmap):
@@ -187,9 +261,7 @@ class FOFAnalyzer():
         for l in range(level, -1, -1):
             m = self.get_level_map(l)
             m_b = self.sc.broadcast(m)
-            merged_rdd = particle_rdd.mapPartitions(lambda particles: remap_partition(particles, m_b.value))
-
-        self.merged_rdd = merged_rdd
+            merged_rdd = fof_rdd.mapPartitions(lambda particles: remap_partition(particles, m_b.value))
 
         return merged_rdd
 
@@ -202,8 +274,10 @@ class FOFAnalyzer():
         Returns a list of relabeled group IDs and particle counts.
         """
 
+        nMinMembers = self.nMinMembers
+
         # define helper functions
-        def count_groups(particle_array, nMinMembers = 8):
+        def count_groups(particle_array, nMinMembers = nMinMembers):
             group_ids, counts = np.unique(particle_array['iGroup'], return_counts=True)
             good = np.where(counts >= nMinMembers)[0]
             return group_ids[good], counts[good]
@@ -227,20 +301,24 @@ class FOFAnalyzer():
 
         merged_rdd = self.merged_rdd
 
-        filtered_groups = merged_rdd.mapPartitions(lambda p: partition_count_groups(p,8)).reduce(combine_dicts)
+        # first, get rid of ghost particles
+#        no_ghosts_rdd = merged_rdd.map(lambda p: p[np.where(not p['is_ghost'])])
+
+
+        filtered_groups = merged_rdd.mapPartitions(lambda p: partition_count_groups(p,nMinMembers)).reduce(combine_dicts)
 
         groups_map = {}
 
         for i, (g,c) in enumerate(sorted(filtered_groups.items(), key = lambda (x,y): y, reverse=True)): 
             groups_map[g] = i+1
 
-        self.merged_rdd = merged_rdd.map(lambda p_arr: relabel_groups_wrapper(p_arr, groups_map))
+        final_fof_rdd = merged_rdd.map(lambda p_arr: relabel_groups_wrapper(p_arr, groups_map))
 
         groups_map_inv = {v:k for (k,v) in groups_map.iteritems()}
 
-        self.sorted_groups = [(i,filtered_groups[groups_map_inv[i]]) for i in range(1,len(filtered_groups)+1)]
+        self._groups = [(i,filtered_groups[groups_map_inv[i]]) for i in range(1,len(filtered_groups)+1)]
 
-        return merged_rdd
+        return final_fof_rdd
 
 
 def setup_domain(N, tau, maxes, mins):
@@ -254,36 +332,37 @@ def setup_domain(N, tau, maxes, mins):
     return domain_containers
 
 
-def partition_particles(particles, domain_containers, tau, mins, maxs):
-    """Copy particles in buffer areas to the partitions that will need them"""
+# def partition_particles(particles, domain_containers, tau, mins, maxs):
+#     """Copy particles in buffer areas to the partitions that will need them"""
 
-    N = domain_containers[0].N
+#     N = domain_containers[0].N
 
-    trans = np.array([[-tau, 0, 0], [0,-tau, 0], [0, 0, -tau], [-tau, -tau, 0], [0, -tau, -tau], [-tau,-tau,-tau]])
+#     trans = np.array([[-tau, 0, 0], [0,-tau, 0], [0, 0, -tau], [-tau, -tau, 0], [0, -tau, -tau], [-tau,-tau,-tau]])
 
-    for p in particles:
-        pos = p['pos']
-        my_bins = []
-        my_bins.append(get_bin_cython(pos, 2**N, mins, maxs))
+#     for p in particles:
+#         pos = p['pos']
+#         my_bins = []
+#         my_bins.append(get_bin_cython(pos, 2**N, mins, maxs))
 
-        my_rect = domain_containers[my_bins[0]]
+#         my_rect = domain_containers[my_bins[0]]
 
-        if rect_buffer_zone_cython(pos,domain_containers):
-            # particle coordinates in single array
-           # coords = np.copy(pos)
-            # iterate through the transformations
-            for t in trans: 
-#                x,y,z = coords + t
-                trans_bin = get_bin_cython(pos+t, 2**N, mins, maxs)
-                if trans_bin not in my_bins and trans_bin > 0:
-                    my_bins.append(trans_bin)
-                    yield (trans_bin, p)
+#         if rect_buffer_zone_cython(pos,domain_containers):
+#             # particle coordinates in single array
+#            # coords = np.copy(pos)
+#             # iterate through the transformations
+#             for t in trans: 
+# #                x,y,z = coords + t
+#                 trans_bin = get_bin_cython(pos+t, 2**N, mins, maxs)
+#                 if trans_bin not in my_bins and trans_bin > 0:
+#                     my_bins.append(trans_bin)
+#                     yield (trans_bin, p)
 
-        # return the first bin, i.e. the only non-ghost bin
-        yield (my_bins[0], p)
+#         # return the first bin, i.e. the only non-ghost bin
+#         yield (my_bins[0], p)
 
 
-def get_bin(px, py, pz, nbins, mins, maxs):
+def get_bin(pos, nbins, mins, maxs):
+    px, py, pz = pos
     minx, miny, minz = mins
     maxx, maxy, maxz = maxs
 
@@ -310,7 +389,7 @@ def flatten(S):
 def get_rectangle_bin(rec, mins, maxs, nbins):
     # take the midpoint of the rectangle
     point = rec.mins + (rec.maxes - rec.mins) / 2.
-    return get_bin_cython(point.astype(np.float32), nbins, mins, maxs)
+    return get_bin(point.astype(np.float32), nbins, mins, maxs)
 
 
 def get_buffer_particles(partition, particles, domain_containers, level=0):
@@ -431,6 +510,6 @@ class DomainRectangle(Rectangle):
         else:
             return self
 
-    def in_buffer_zone(self, p):
-        """Determine whether a particle is in the buffer zone"""
-        return rect_buffer_zone_cython(p['pos'], self.mins, self.maxes, self.bufferRectangle.mins, self.bufferRectangle.maxes)
+    # def in_buffer_zone(self, p):
+    #     """Determine whether a particle is in the buffer zone"""
+    #     return rect_buffer_zone_cython(p['pos'], self.mins, self.maxes, self.bufferRectangle.mins, self.bufferRectangle.maxes)
