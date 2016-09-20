@@ -15,8 +15,11 @@ from spark_fof_c import  remap_gid_partition_cython, \
                          relabel_groups, \
                          ghost_mask, \
                          pdt
-
+                         
 from fof import fof
+
+PRIMARY_GHOST_PARTICLE = 1
+GHOST_PARTICLE_COPY = 2 
 
 class FOFAnalyzer():
     def __init__(self, sc, particles, nMinMembers, nBins, tau, mins=[-.5,-.5,-.5], maxs=[.5,.5,.5]):
@@ -277,22 +280,25 @@ class FOFAnalyzer():
         nMinMembers = self.nMinMembers
 
         # define helper functions
-        def count_groups(particle_array, nMinMembers = nMinMembers):
-            group_ids, counts = np.unique(particle_array['iGroup'], return_counts=True)
-            good = np.where(counts >= nMinMembers)[0]
-            return group_ids[good], counts[good]
-
-        def partition_count_groups(particle_arrays, nMinMembers=8):
-            count_dict = defaultdict(int)
-            for particle_array in particle_arrays:
-                gs, counts = count_groups(particle_array, nMinMembers)
-                for i in xrange(len(gs)): 
-                    count_dict[gs[i]] += counts[i] 
-            yield count_dict
+        def count_groups(particle_array):
+            gs, counts = np.unique(particle_array['iGroup'], return_counts=True)
+            count_dict = dict()
+        
+            for i in xrange(len(gs)): 
+                if gs[i] in count_dict: 
+                    # here we explicitly cast to integer because the marshal serializer 
+                    # otherwise garbles the data
+                    count_dict[long(gs[i])] += long(counts[i])
+                else:
+                    count_dict[long(gs[i])] = long(counts[i])
+            return count_dict
 
         def combine_dicts(d1, d2): 
             for k,v in d2.iteritems(): 
-                d1[k] += v
+                if k in d1: 
+                    d1[k] += v
+                else: 
+                    d1[k] = v
             return d1
 
         def relabel_groups_wrapper(p_arr, groups_map): 
@@ -302,21 +308,22 @@ class FOFAnalyzer():
         merged_rdd = self.merged_rdd
 
         # first, get rid of ghost particles
-#        no_ghosts_rdd = merged_rdd.map(lambda p: p[np.where(not p['is_ghost'])])
+        no_ghosts_rdd = merged_rdd.map(lambda p: p[np.where(p['is_ghost'] != GHOST_PARTICLE_COPY)[0]])
 
+        filtered_groups = no_ghosts_rdd.map(count_groups).treeReduce(combine_dicts, 4)
 
-        filtered_groups = merged_rdd.mapPartitions(lambda p: partition_count_groups(p,nMinMembers)).reduce(combine_dicts)
-
+        # get the final group mapping by sorting groups by particle count
         groups_map = {}
 
         for i, (g,c) in enumerate(sorted(filtered_groups.items(), key = lambda (x,y): y, reverse=True)): 
             groups_map[g] = i+1
 
-        final_fof_rdd = merged_rdd.map(lambda p_arr: relabel_groups_wrapper(p_arr, groups_map))
+        final_fof_rdd = no_ghosts_rdd.map(lambda p_arr: relabel_groups_wrapper(p_arr, groups_map))
 
         groups_map_inv = {v:k for (k,v) in groups_map.iteritems()}
 
-        self._groups = [(i,filtered_groups[groups_map_inv[i]]) for i in range(1,len(filtered_groups)+1)]
+        self._groups = [(i,filtered_groups[groups_map_inv[i]]) for i in range(1,len(filtered_groups)+1) \
+                        if filtered_groups[groups_map_inv[i]] >= nMinMembers]
 
         return final_fof_rdd
 
