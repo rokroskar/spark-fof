@@ -54,7 +54,7 @@ cdef populate_arrays(cfof.KD kd, np.ndarray[cfof.PARTICLE] particles):
 
 
 # main function called from python
-cpdef run(np.ndarray[cfof.PARTICLE] particles, float fEps, int nMembers):
+cpdef int run(np.ndarray[cfof.PARTICLE] particles, float fEps, int nMembers):
     cdef cfof.KD kd
     cdef float fPeriod[3] 
     cdef float fCenter[3]
