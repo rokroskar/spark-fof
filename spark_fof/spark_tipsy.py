@@ -1,5 +1,6 @@
 import numpy as np
 
+import pyspark
 from pyspark.accumulators import AccumulatorParam
 
 #

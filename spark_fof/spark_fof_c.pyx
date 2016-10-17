@@ -104,7 +104,13 @@ def new_partitioning_cython(Particle[:] p_arr, domain_containers, float tau, dou
                                        [0, 0, -tau], 
                                        [-tau, -tau, 0], 
                                        [0, -tau, -tau], 
-                                       [-tau,-tau,-tau]], 
+                                       [-tau,-tau,-tau],
+                                       [tau, 0, 0], 
+                                       [0,tau, 0], 
+                                       [0, 0, tau], 
+                                       [tau, tau, 0], 
+                                       [0, tau, tau], 
+                                       [tau,tau,tau]], 
                                       dtype=np.float32)
     cdef float[3] new_point
     cdef Particle[:] ghosts 
@@ -146,7 +152,7 @@ def new_partitioning_cython(Particle[:] p_arr, domain_containers, float tau, dou
                 ghost_particle = p_arr[i]
                 trans_mark[:] = -1
 
-                for j in range(6):
+                for j in range(trans.shape[0]):
                     for k in range(3):
                         new_point[k] = p_arr[i].r[k] + trans[j,k]
                     

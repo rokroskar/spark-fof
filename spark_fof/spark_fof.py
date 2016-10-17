@@ -4,10 +4,13 @@ from math import floor, ceil
 from functools import total_ordering
 import networkx as nx
 from collections import defaultdict
-import spark_tipsy
+
+# initialize spark to load spark classes
+import findspark
+findspark.init()
 import pyspark
 
-from fof import fof
+from . import spark_tipsy
 
 import spark_fof_c
 
@@ -16,7 +19,7 @@ from spark_fof_c import  remap_gid_partition_cython, \
                          ghost_mask, \
                          pdt
                          
-from fof import fof
+from . import fof
 
 PRIMARY_GHOST_PARTICLE = 1
 GHOST_PARTICLE_COPY = 2 
