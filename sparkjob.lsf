@@ -1,7 +1,7 @@
 #!/bin/sh
-#BSUB -J spark-ngs
+#BSUB -J spark-fof
 #BSUB -W 2:00 # requesting 10 minutes
-#BSUB -o spark-ngs-%J.log # output extra o means overwrite
+#BSUB -o spark-fof-%J.log # output extra o means overwrite
 #BSUB -n 20 # requesting 96 cores
 #BSUB -R "span[hosts=-1] rusage[mem=8000]"
 

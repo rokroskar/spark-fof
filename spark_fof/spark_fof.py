@@ -25,7 +25,7 @@ PRIMARY_GHOST_PARTICLE = 1
 GHOST_PARTICLE_COPY = 2 
 
 class FOFAnalyzer():
-    def __init__(self, sc, particles, nMinMembers, nBins, tau, mins=[-.5,-.5,-.5], maxs=[.5,.5,.5]):
+    def __init__(self, sc, particles, nMinMembers, nBins, tau, mins=[-.5,-.5,-.5], maxs=[.5,.5,.5], Npartitions=None):
         self.sc = sc
         self.nBins = nBins
         self.tau = tau
@@ -34,8 +34,12 @@ class FOFAnalyzer():
         self.nMinMembers = nMinMembers
 
         domain_containers = setup_domain(nBins, tau, maxs, mins)
-
         self.domain_containers = domain_containers
+
+        if Npartitions is None: 
+            self.Npartitions = len(domain_containers)
+        else: 
+            self.Npartitions = Npartitions
 
         if isinstance(particles, str): 
             # we assume we have a file location
@@ -93,12 +97,10 @@ class FOFAnalyzer():
         dropping ones that don't fit criteria.
         """
 
-
-
     def partition_particles(self): 
         """Partitions the particles for running local FOF"""
 
-        Npartitions = len(self.domain_containers)
+        Npartitions = self.Npartitions
         tau, domain_containers, dom_mins, dom_maxs = self.tau, self.domain_containers, self.mins, self.maxs
 
         # set up domain limit arrays
@@ -108,6 +110,8 @@ class FOFAnalyzer():
         maxs = np.zeros((n_containers, 3))
         mins_buff = np.zeros((n_containers, 3))
         maxs_buff = np.zeros((n_containers, 3))
+
+        domain_containers_b = self.sc.broadcast(domain_containers)
 
         for i in range(n_containers): 
             mins[i] = domain_containers[i].mins
@@ -120,11 +124,29 @@ class FOFAnalyzer():
             for particle_array in particle_iterator: 
                 # first mark the ghosts
                 ghost_mask(particle_array, tau, N, mins, maxs, mins_buff, maxs_buff, dom_mins, dom_maxs)
-                res = spark_fof_c.new_partitioning_cython(particle_array, domain_containers, tau, dom_mins, dom_maxs)
+                res = spark_fof_c.new_partitioning_cython(particle_array, domain_containers_b.value, tau, 
+                                                          mins, maxs, mins_buff, maxs_buff, dom_mins, dom_maxs)
                 for r in res: 
                     yield r
 
-        partitioned_rdd = (self.particle_rdd.mapPartitions(partition_wrapper)).partitionBy(Npartitions).values()
+        if self.global_to_local_map is not None: 
+            gl_to_loc_map = self.global_to_local_map
+            gl_to_loc_map_b = self.sc.broadcast(gl_to_loc_map)
+
+            def remap_partition(particles, gmap):
+                """Helper function to remap groups"""
+                for p_arr in particles: 
+                    remap_gid_partition_cython(p_arr, gmap)
+                    yield p_arr
+
+            partitioned_rdd = (self.particle_rdd.mapPartitions(partition_wrapper)
+                                                .filter(lambda (k,v): k in gl_to_loc_map_b.value)
+                                                .map(lambda (k,v): (gl_to_loc_map_b.value[k],v))
+                                                .partitionBy(Npartitions)
+                                                .values()
+                                                .mapPartitions(lambda particles: remap_partition(particles, gl_to_loc_map_b.value)))
+        else:
+            partitioned_rdd = (self.particle_rdd.mapPartitions(partition_wrapper).partitionBy(Npartitions).values())
 
         self._partitioned_rdd = partitioned_rdd
 
@@ -260,6 +282,7 @@ class FOFAnalyzer():
         domain_containers = self.domain_containers
 
         def remap_partition(particles, gmap):
+            """Helper function to remap groups"""
             for p_arr in particles: 
                 remap_gid_partition_cython(p_arr, gmap)
                 yield p_arr
@@ -270,7 +293,6 @@ class FOFAnalyzer():
             merged_rdd = fof_rdd.mapPartitions(lambda particles: remap_partition(particles, m_b.value))
 
         return merged_rdd
-
 
     def finalize_groups(self):
         """
@@ -332,14 +354,24 @@ class FOFAnalyzer():
 
 
 def setup_domain(N, tau, maxes, mins):
-    D = DomainRectangle(maxes, mins, tau=tau)
-    domain_containers = D.split_domain(max_N=N)
-    for r in domain_containers:
-        r.bin = get_rectangle_bin(r, D.mins, D.maxes, 2**N)
+    """Set up the rectangles that define the domain"""
 
-    domain_containers.sort(key=lambda x: x.bin)
+    domain_containers = []
 
-    return domain_containers
+    n_containers = N**3
+
+    xbins = np.linspace(mins[0], maxes[0], N+1)
+    ybins = np.linspace(mins[1], maxes[1], N+1)
+    zbins = np.linspace(mins[2], maxes[2], N+1)
+    
+    for i in range(N): 
+        for j in range(N):
+            for k in range(N): 
+                domain_containers.append(DomainRectangle([xbins[k+1], ybins[j+1], zbins[i+1]],
+                                                         [xbins[k],   ybins[j],   zbins[i]], tau=tau, N=N))
+
+    # reverse the list when returning to make the first rectangle be the upper left
+    return domain_containers[::-1]
 
 
 # def partition_particles(particles, domain_containers, tau, mins, maxs):

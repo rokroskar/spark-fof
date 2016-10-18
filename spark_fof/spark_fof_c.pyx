@@ -1,5 +1,5 @@
 # cython: profile=True
-# cython: linetrace=False
+# cython: linetrace=True
 # distutils: define_macros=CYTHON_TRACE_NOGIL=0
 
 from libc.math cimport floor
@@ -9,8 +9,8 @@ cimport numpy as np
 from cpython cimport array
 
 from cspark_fof_c cimport in_buffer 
-from fof cimport cfof
-from fof.cfof cimport Particle
+from spark_fof.fof cimport cfof
+from spark_fof.fof.cfof cimport Particle
 from bisect import bisect_left
 
 
@@ -92,10 +92,16 @@ cdef long count_ghosts(Particle [:] p_arr) nogil:
 
 
 @cython.boundscheck(False)
-def new_partitioning_cython(Particle[:] p_arr, domain_containers, float tau, double[:] dom_mins, double[:] dom_maxs):
+def new_partitioning_cython(Particle[:] p_arr, domain_containers, float tau, 
+                            double[:, :] mins,
+                            double[:, :] maxs,
+                            double[:, :] mins_buff,
+                            double[:, :] maxs_buff, 
+                            double[:] dom_mins, 
+                            double[:] dom_maxs):
     cdef int N = domain_containers[0].N
     cdef unsigned int n_containers = len(domain_containers)
-    cdef unsigned int nparts, i, j, k, ghost_ind=0
+    cdef unsigned int i, j, k, ghost_ind=0
     cdef long right_ind, left_ind
     cdef int my_bin, trans_bin
     cdef float* point
@@ -115,37 +121,17 @@ def new_partitioning_cython(Particle[:] p_arr, domain_containers, float tau, dou
     cdef float[3] new_point
     cdef Particle[:] ghosts 
     cdef Particle ghost_particle
-    cdef int[:] trans_mark = np.zeros(6, dtype=np.int32)
-    cdef double[:, :] mins = np.zeros((len(domain_containers),3))
-    cdef double[:, :] maxs = np.zeros((len(domain_containers),3))
-    cdef double[:, :] mins_buff = np.zeros((len(domain_containers),3))
-    cdef double[:, :] maxs_buff = np.zeros((len(domain_containers),3))
-    cdef double[:] min_temp 
-    cdef double[:] max_temp 
-    cdef double[:] min_buff_temp 
-    cdef double[:] max_buff_temp 
-    
+    cdef int[:] trans_mark = np.zeros(trans.shape[0], dtype=np.int32)
+  
     # check the number of ghost particles we have
     nghosts = count_ghosts(p_arr)
     ghosts = np.zeros(nghosts*4, dtype=pdt)
-
-    # set up domain limits
-    for i in range(n_containers): 
-        d = domain_containers[i]
-        min_temp = d.mins
-        max_temp = d.maxes
-        min_buff_temp = d.bufferRectangle.mins
-        max_buff_temp = d.bufferRectangle.maxes
-        mins[i,:] = min_temp
-        maxs[i] = max_temp
-        mins_buff[i] = min_buff_temp
-        maxs_buff[i] = max_buff_temp
     
     with nogil:
         for i in range(p_arr.shape[0]):
             point = p_arr[i].r
-            my_bin = get_bin_cython(point, 2**N, dom_mins, dom_maxs)
-        
+            my_bin = get_bin_cython(point, N, dom_mins, dom_maxs)
+            
             p_arr[i].iGroup = my_bin
           
             if p_arr[i].is_ghost:
@@ -156,8 +142,8 @@ def new_partitioning_cython(Particle[:] p_arr, domain_containers, float tau, dou
                     for k in range(3):
                         new_point[k] = p_arr[i].r[k] + trans[j,k]
                     
-                    trans_bin = get_bin_cython(new_point, 2**N, dom_mins,dom_maxs)
-           
+                    trans_bin = get_bin_cython(new_point, N, dom_mins,dom_maxs)
+
                     if trans_bin != my_bin and \
                        trans_bin >= 0 \
                        and not bin_already_there(trans_mark, trans_bin): 
@@ -166,6 +152,7 @@ def new_partitioning_cython(Particle[:] p_arr, domain_containers, float tau, dou
                         ghost_particle.is_ghost = GHOST_PARTICLE_COPY
                         ghosts[ghost_ind] = ghost_particle
                         ghost_ind+=1
+
                                 
     all_ps = np.concatenate([np.asarray(p_arr), np.asarray(ghosts)[np.nonzero(ghosts)[0]]])
     all_ps.sort(order='iGroup')
@@ -212,7 +199,7 @@ cpdef void ghost_mask(Particle[:] p_arr, float tau, int N,
     
     for i in range(p_arr.shape[0]):
         point = p_arr[i].r
-        my_bin = get_bin_cython(point, 2**N, dom_mins, dom_maxs)
+        my_bin = get_bin_cython(point, N, dom_mins, dom_maxs)
         p_arr[i].is_ghost = rect_buffer_zone_cython(point, 
                                                     &mins[my_bin,0], 
                                                     &maxs[my_bin,0], 
