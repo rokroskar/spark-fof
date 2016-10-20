@@ -127,6 +127,8 @@ def new_partitioning_cython(Particle[:] p_arr, domain_containers, float tau,
     nghosts = count_ghosts(p_arr)
     ghosts = np.zeros(nghosts*4, dtype=pdt)
     
+    print "Number of ghosts: ", nghosts, "Number of particles: ", p_arr.shape[0]
+
     with nogil:
         for i in range(p_arr.shape[0]):
             point = p_arr[i].r
@@ -142,7 +144,7 @@ def new_partitioning_cython(Particle[:] p_arr, domain_containers, float tau,
                     for k in range(3):
                         new_point[k] = p_arr[i].r[k] + trans[j,k]
                     
-                    trans_bin = get_bin_cython(new_point, N, dom_mins,dom_maxs)
+                    trans_bin = get_bin_cython(new_point, N, dom_mins, dom_maxs)
 
                     if trans_bin != my_bin and \
                        trans_bin >= 0 \

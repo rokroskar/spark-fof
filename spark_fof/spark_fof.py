@@ -4,6 +4,7 @@ from math import floor, ceil
 from functools import total_ordering
 import networkx as nx
 from collections import defaultdict
+from itertools import izip 
 
 # initialize spark to load spark classes
 import findspark
@@ -33,7 +34,8 @@ class FOFAnalyzer():
         self.maxs = maxs
         self.nMinMembers = nMinMembers
 
-        domain_containers = setup_domain(nBins, tau, maxs, mins)
+        print 'wtf'
+        domain_containers = setup_domain(nBins, tau, mins, maxs) 
         self.domain_containers = domain_containers
 
         if Npartitions is None: 
@@ -208,7 +210,7 @@ class FOFAnalyzer():
 
         groups_map = (fof_rdd.flatMap(lambda p: p[np.where(p['is_ghost'])[0]])
                              .map(pid_gid)
-                             .aggregateByKey([], lambda l, g: l + [g], lambda a, b: sorted(a + b))
+                             .aggregateByKey([], lambda l, g: l + [g], lambda a, b: sorted(a + b), N_partitions)
                              .values()
                              .flatMap(lambda gs: [(g, gs[0]) for g in gs[1:]])).collect()
 
@@ -292,6 +294,8 @@ class FOFAnalyzer():
             m_b = self.sc.broadcast(m)
             merged_rdd = fof_rdd.mapPartitions(lambda particles: remap_partition(particles, m_b.value))
 
+        self.group_merge_map = m
+
         return merged_rdd
 
     def finalize_groups(self):
@@ -304,27 +308,11 @@ class FOFAnalyzer():
 
         nMinMembers = self.nMinMembers
 
-        # define helper functions
-        def count_groups(particle_array):
-            gs, counts = np.unique(particle_array['iGroup'], return_counts=True)
-            count_dict = dict()
-        
-            for i in xrange(len(gs)): 
-                if gs[i] in count_dict: 
-                    # here we explicitly cast to integer because the marshal serializer 
-                    # otherwise garbles the data
-                    count_dict[long(gs[i])] += long(counts[i])
-                else:
-                    count_dict[long(gs[i])] = long(counts[i])
-            return count_dict
-
-        def combine_dicts(d1, d2): 
-            for k,v in d2.iteritems(): 
-                if k in d1: 
-                    d1[k] += v
-                else: 
-                    d1[k] = v
-            return d1
+        def count_groups_partition(particle_arrays, gr_map_inv_b, nMinMembers): 
+            p_arr = np.concatenate(list(particle_arrays))
+            gs, counts = np.unique(p_arr['iGroup'], return_counts=True)
+            gr_map_inv = gr_map_inv_b.value
+            return ((g,cnt) for g,cnt in izip(gs,counts) if (g in gr_map_inv) or (cnt >= nMinMembers))
 
         def relabel_groups_wrapper(p_arr, groups_map): 
             relabel_groups(p_arr, groups_map)
@@ -332,28 +320,36 @@ class FOFAnalyzer():
 
         merged_rdd = self.merged_rdd
 
+        group_merge_map = self.group_merge_map
+        gr_map_inv = {v:k for (k,v) in group_merge_map.iteritems()}
+        gr_map_inv_b = sc.broadcast(gr_map_inv)
+
         # first, get rid of ghost particles
         no_ghosts_rdd = merged_rdd.map(lambda p: p[np.where(p['is_ghost'] != GHOST_PARTICLE_COPY)[0]])
 
-        filtered_groups = no_ghosts_rdd.map(count_groups).treeReduce(combine_dicts, 4)
+        group_counts = no_ghosts_rdd.mapPartitions(lambda p_arrs: count_groups_partition(p_arrs, gr_map_inv_b, nMinMembers))
+        merge_group_counts = (group_counts.filter(lambda (g,cnt): g in gr_map_inv_b.value)
+                                          .reduceByKey(lambda a,b: a+b)
+                                          .filter(lambda (g,cnt): cnt>=nMinMembers))
+
+        total_group_counts = (group_counts + merge_group_counts).sortBy(lambda (k,v): -v)
 
         # get the final group mapping by sorting groups by particle count
         groups_map = {}
 
-        for i, (g,c) in enumerate(sorted(filtered_groups.items(), key = lambda (x,y): y, reverse=True)): 
+        for i, (g,c) in enumerate(total_group_counts): 
             groups_map[g] = i+1
 
         final_fof_rdd = no_ghosts_rdd.map(lambda p_arr: relabel_groups_wrapper(p_arr, groups_map))
 
         groups_map_inv = {v:k for (k,v) in groups_map.iteritems()}
 
-        self._groups = [(i,filtered_groups[groups_map_inv[i]]) for i in range(1,len(filtered_groups)+1) \
-                        if filtered_groups[groups_map_inv[i]] >= nMinMembers]
+        self._groups = total_group_counts   
 
         return final_fof_rdd
 
 
-def setup_domain(N, tau, maxes, mins):
+def setup_domain(N, tau, mins, maxes):
     """Set up the rectangles that define the domain"""
 
     domain_containers = []
@@ -367,11 +363,10 @@ def setup_domain(N, tau, maxes, mins):
     for i in range(N): 
         for j in range(N):
             for k in range(N): 
-                domain_containers.append(DomainRectangle([xbins[k+1], ybins[j+1], zbins[i+1]],
-                                                         [xbins[k],   ybins[j],   zbins[i]], tau=tau, N=N))
+                domain_containers.append(DomainRectangle([xbins[k], ybins[j], zbins[i]],
+                                                         [xbins[k+1],   ybins[j+1],   zbins[i+1]], tau=tau, N=N))
 
-    # reverse the list when returning to make the first rectangle be the upper left
-    return domain_containers[::-1]
+    return domain_containers
 
 
 # def partition_particles(particles, domain_containers, tau, mins, maxs):
