@@ -79,6 +79,7 @@ class FOFAnalyzer():
         self._final_fof_rdd = None
         self._groups = None
 
+        self.global_to_local_map = None
 
 
 
@@ -127,13 +128,13 @@ class FOFAnalyzer():
         """
         Set the `is_ghost` flag for the particle arrays in the rdd.
         """
-        tau, containers, dom_mins, dom_maxs = self.tau, self.domain_containers, self.dom_mins, self.dom_maxs
+        tau, N, dom_mins, dom_maxs = self.tau, self.N, self.dom_mins, self.dom_maxs
         container_mins, container_maxs, buff_mins, buff_maxs = self.container_mins, self.container_maxs, \
                                                                self.buff_mins, self.buff_maxs
 
         def ghost_map_wrapper(iterator): 
             for arr in iterator: 
-                ghost_mask(arr, tau, containers[0].N, container_mins, container_maxs, 
+                ghost_mask(arr, tau, N, container_mins, container_maxs, 
                            buff_mins, buff_maxs, dom_mins, dom_maxs)
                 yield arr
 
@@ -172,19 +173,16 @@ class FOFAnalyzer():
             gl_to_loc_map = self.global_to_local_map
             gl_to_loc_map_b = self.sc.broadcast(gl_to_loc_map)
 
-            def remap_partition(particles, gmap):
+            def remap_partition(particles):
                 """Helper function to remap groups"""
-                for pid, p_arr in particles: 
-                    remap_gid_partition_cython(p_arr, gmap)
-                    yield p_arr
+                remap_gid_partition_cython(particles, gl_to_loc_map_b.value)
+                return particles
 
-            ghosts_rdd = (self.particle_rdd.mapPartitions(partition_wrapper, preservesPartitioning=True)
+            ghosts_rdd = (self.particle_rdd.mapPartitions(partition_wrapper)
                                                 .filter(lambda (k,v): k in gl_to_loc_map_b.value)
-                                                .map(lambda (k,v): (gl_to_loc_map_b.value[k],v), preservesPartitioning=True)
-                                                .partitionBy(Npartitions).cache()
-                                                .mapPartitions(lambda particles: 
-                                                               remap_partition(particles, gl_to_loc_map_b.value), 
-                                                               preservesPartitioning=True))
+                                                .map(lambda (k,v): (gl_to_loc_map_b.value[k],v))
+                                                .partitionBy(Npartitions)
+                                                .map(lambda (k,v): remap_partition(v), preservesPartitioning=True))
         else:
             ghosts_rdd = (self.particle_rdd.mapPartitions(partition_wrapper).partitionBy(Npartitions).values())
 
@@ -248,23 +246,21 @@ class FOFAnalyzer():
 
         N_partitions = sc.defaultParallelism*20
 
-        dom_mins = self.mins
-        dom_maxs = self.maxs
-        nbins = self.nBins
 
-        global_to_local_map = self.global_to_local_map
-        gl_to_loc_map_b = sc.broadcast(global_to_local_map)
+        # groups_map = (fof_rdd.flatMap(lambda p: p[np.where(p['is_ghost'])[0]])
+        #                    #  .map(lambda p: (p['pos'], p))
+        #                      .map(pid_gid)
+        #                      .aggregateByKey([], lambda l, g: l + [g], lambda a, b: sorted(a + b), 
+        #                                      N_partitions)).collect()
+#                             .values()
+#                             .filter(lambda x: len(x)>1)).collect()
+#                             .flatMap(lambda gs: [(g, gs[0]) for g in gs[1:]])).collect()
 
-        set_bin = lambda pos: gl_to_loc_map_b.value[get_bin(pos,nbins,mins,maxs)]
+        # join the groups of original and copied ghosts based on particle ID
+        ghost_copy_rdd = fof_rdd.flatMap(lambda p: p[np.where(p['is_ghost']==2)[0]]).map(pid_gid)
+        ghost_orig_rdd = fof_rdd.flatMap(lambda p: p[np.where(p['is_ghost']==1)[0]]).map(pid_gid)
 
-        groups_map = (fof_rdd.flatMap(lambda p: p[np.where(p['is_ghost'])[0]])
-                             .map(lambda p: (p['pos'], p))
-                             .mapValues(pid_gid)
-                             .aggregateByKey([], lambda l, g: l + [g], lambda a, b: sorted(a + b), 
-                                             N_partitions,
-                                             partitionFunc=set_bin)
-                             .values()
-                             .flatMap(lambda gs: [(g, gs[0]) for g in gs[1:]])).collect()
+        groups_map = ghost_copy_rdd.join(ghost_orig_rdd).map(lambda (k,v): sorted(v)).collect()
 
         return groups_map
 
