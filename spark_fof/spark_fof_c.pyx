@@ -9,8 +9,8 @@ cimport numpy as np
 from cpython cimport array
 
 from cspark_fof_c cimport in_buffer 
-from fof cimport cfof
-from fof.cfof cimport Particle
+from spark_fof.fof cimport cfof
+from spark_fof.fof.cfof cimport Particle
 from bisect import bisect_left
 
 
