@@ -106,14 +106,12 @@ cdef long count_ghosts(Particle [:] p_arr) nogil:
 def partition_array(Particle[:] p_arr, int N, float tau, int symmetric,
                     double[:] dom_mins, 
                     double[:] dom_maxs):
-    cdef unsigned int i, 
+    cdef unsigned int i 
     cdef long right_ind, left_ind
-    cdef float* point
     
     with nogil:
         for i in range(p_arr.shape[0]):
-            point = p_arr[i].r
-            p_arr[i].iGroup = get_bin_cython(point, N, dom_mins, dom_maxs)
+            p_arr[i].iGroup = get_bin_cython(p_arr[i].r, N, dom_mins, dom_maxs)
             
     p_np = np.array(p_arr)
     p_np.sort(order='iGroup')
@@ -161,7 +159,7 @@ def partition_ghosts(Particle[:] p_arr, int N, float tau, int symmetric,
     nghosts = count_ghosts(p_arr)
     ghosts = np.zeros(nghosts*4, dtype=pdt)
     
-    trans_max = 11 if symmetric else 5
+    trans_max = 12 if symmetric else 6
 
     with nogil:
         for i in range(p_arr.shape[0]):

@@ -137,8 +137,8 @@ class FOFAnalyzer():
         Set the `is_ghost` flag for the particle arrays in the rdd.
         """
         tau, N, dom_mins, dom_maxs = self.tau, self.N, self.dom_mins, self.dom_maxs
-        container_mins, container_maxs, buff_mins, buff_maxs = self.container_mins, self.container_maxs, \
-                                                               self.buff_mins, self.buff_maxs
+        container_mins, container_maxs = self.container_mins, self.container_maxs
+        buff_mins, buff_maxs = self.buff_mins, self.buff_maxs
 
         def ghost_map_wrapper(iterator): 
             for arr in iterator: 
@@ -150,6 +150,8 @@ class FOFAnalyzer():
         
 
     def _partition_rdd(self, rdd, function):
+        """Helper function for setting up the arrays for partitioning""" 
+
         N, tau, dom_mins, dom_maxs, symmetric = self.N, self.tau, self.dom_mins, self.dom_maxs, self.symmetric
         def partition_helper(iterator):
             for arr in iterator: 
@@ -245,26 +247,16 @@ class FOFAnalyzer():
         domain_containers = self.domain_containers
         sc = self.sc
 
-        N_partitions = sc.defaultParallelism*20
+        N_partitions = sc.defaultParallelism*10
 
-
-        # groups_map = (fof_rdd.flatMap(lambda p: p[np.where(p['is_ghost'])[0]])
-        #                    #  .map(lambda p: (p['pos'], p))
-        #                      .map(pid_gid)
-        #                      .aggregateByKey([], lambda l, g: l + [g], lambda a, b: sorted(a + b), 
-        #                                      N_partitions)).collect()
-#                             .values()
-#                             .filter(lambda x: len(x)>1)).collect()
-#                             .flatMap(lambda gs: [(g, gs[0]) for g in gs[1:]])).collect()
-
-        # join the groups of original and copied ghosts based on particle ID
-        ghost_copy_rdd = fof_rdd.flatMap(lambda p: p[np.where(p['is_ghost']==2)[0]]).map(pid_gid)
-        ghost_orig_rdd = fof_rdd.flatMap(lambda p: p[np.where(p['is_ghost']==1)[0]]).map(pid_gid)
-
-        groups_map = ghost_copy_rdd.join(ghost_orig_rdd).map(lambda (k,v): sorted(v)).collect()
+        groups_map = (fof_rdd.flatMap(lambda p: p[np.where(p['is_ghost'])[0]])
+                             .map(pid_gid)
+                             .groupByKey(N_partitions)
+                             .values()
+                             .map(lambda x: sorted(x))
+                             .flatMap(lambda gs: [(g, gs[0]) for g in gs[1:]])).collect()
 
         return groups_map
-
  
     def get_level_map(self, level=0):
         """Produce a group re-mapping across sub-domains. Connected groups are obtained by finding
@@ -421,35 +413,6 @@ def setup_domain(N, tau, mins, maxes):
                                                          [xbins[k+1],   ybins[j+1],   zbins[i+1]], tau=tau, N=N))
 
     return domain_containers
-
-
-# def partition_particles(particles, domain_containers, tau, mins, maxs):
-#     """Copy particles in buffer areas to the partitions that will need them"""
-
-#     N = domain_containers[0].N
-
-#     trans = np.array([[-tau, 0, 0], [0,-tau, 0], [0, 0, -tau], [-tau, -tau, 0], [0, -tau, -tau], [-tau,-tau,-tau]])
-
-#     for p in particles:
-#         pos = p['pos']
-#         my_bins = []
-#         my_bins.append(get_bin_cython(pos, 2**N, mins, maxs))
-
-#         my_rect = domain_containers[my_bins[0]]
-
-#         if rect_buffer_zone_cython(pos,domain_containers):
-#             # particle coordinates in single array
-#            # coords = np.copy(pos)
-#             # iterate through the transformations
-#             for t in trans: 
-# #                x,y,z = coords + t
-#                 trans_bin = get_bin_cython(pos+t, 2**N, mins, maxs)
-#                 if trans_bin not in my_bins and trans_bin > 0:
-#                     my_bins.append(trans_bin)
-#                     yield (trans_bin, p)
-
-#         # return the first bin, i.e. the only non-ghost bin
-#         yield (my_bins[0], p)
 
 
 def get_bin(pos, nbins, mins, maxs):
