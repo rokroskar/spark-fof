@@ -70,6 +70,7 @@ cdef bint rect_buffer_zone_cython(float[3] point,
 @cython.profile(False)
 @cython.boundscheck(False)
 cdef inline bint in_rectangle_cython(double[3] mins, double[3] maxs, float[3] point) nogil:
+    """Check if particle is inside a rectangle"""
     cdef float size
     cdef bint res=1
     cdef unsigned int i, ndim=3
@@ -81,6 +82,7 @@ cdef inline bint in_rectangle_cython(double[3] mins, double[3] maxs, float[3] po
 
 @cython.boundscheck(False)
 cpdef remap_gid_partition_cython(Particle [:] p_arr, dict gid_map):
+    """Remap group ids"""
     cdef long g
     cdef int i
 
@@ -92,6 +94,7 @@ cpdef remap_gid_partition_cython(Particle [:] p_arr, dict gid_map):
 
 @cython.boundscheck(False)
 cdef long count_ghosts(Particle [:] p_arr) nogil: 
+    """Return the number of ghost particles in the array"""
     cdef long nghosts=0
     cdef unsigned int i
     for i in range(p_arr.shape[0]): 
@@ -100,103 +103,39 @@ cdef long count_ghosts(Particle [:] p_arr) nogil:
 
 
 @cython.boundscheck(False)
-def new_partitioning_cython(Particle[:] p_arr, domain_containers, float tau, 
-                            double[:, :] mins,
-                            double[:, :] maxs,
-                            double[:, :] mins_buff,
-                            double[:, :] maxs_buff, 
-                            double[:] dom_mins, 
-                            double[:] dom_maxs):
-    cdef int N = domain_containers[0].N
-    cdef unsigned int n_containers = len(domain_containers)
-    cdef unsigned int i, j, k, ghost_ind=0, n
+def partition_array(Particle[:] p_arr, int N, float tau, int symmetric,
+                    double[:] dom_mins, 
+                    double[:] dom_maxs):
+    cdef unsigned int i, 
     cdef long right_ind, left_ind
-    cdef int my_bin, trans_bin
     cdef float* point
-    cdef float[:, :] trans = np.array([[-tau, 0, 0], 
-                                       [0,-tau, 0], 
-                                       [0, 0, -tau], 
-                                       [-tau, -tau, 0], 
-                                       [0, -tau, -tau], 
-                                       [-tau,-tau,-tau],
-                                       [tau, 0, 0], 
-                                       [0,tau, 0], 
-                                       [0, 0, tau], 
-                                       [tau, tau, 0], 
-                                       [0, tau, tau], 
-                                       [tau,tau,tau]], 
-                                      dtype=np.float32)
-    cdef float[3] new_point
-    cdef Particle[:] ghosts 
-    cdef Particle ghost_particle
-    cdef int[:] trans_mark = np.zeros(trans.shape[0], dtype=np.int32)
-  
-    # check the number of ghost particles we have
-    nghosts = count_ghosts(p_arr)
-    ghosts = np.zeros(nghosts*4, dtype=pdt)
     
     with nogil:
         for i in range(p_arr.shape[0]):
             point = p_arr[i].r
-            my_bin = get_bin_cython(point, N, dom_mins, dom_maxs)
+            p_arr[i].iGroup = get_bin_cython(point, N, dom_mins, dom_maxs)
             
-            # store the bin as the groupid temporarily
-            p_arr[i].iGroup = my_bin
-          
-            if p_arr[i].is_ghost:
-                # for n in range(3):
-                #     ghost_particle.r[n] = p_arr[i].r[n]
-                # ghost_particle.iOrder = p_arr[i].iOrder
-                # ghost_particle.iGroup = p_arr[i].iGroup 
-                ghost_particle = p_arr[i]
-
-                trans_mark[:] = -1
-
-                for j in range(trans.shape[0]):
-                    for k in range(3):
-                        new_point[k] = p_arr[i].r[k] + trans[j,k]
-                    
-                    trans_bin = get_bin_cython(new_point, N, dom_mins, dom_maxs)
-
-                    if trans_bin != my_bin and \
-                       trans_bin >= 0 \
-                       and not bin_already_there(trans_mark, trans_bin, trans.shape[0]): 
-
-                        trans_mark[j] = trans_bin
-                        ghost_particle.iGroup = trans_bin
-                        ghost_particle.is_ghost = GHOST_PARTICLE_COPY
-                        ghosts[ghost_ind] = ghost_particle
-                        ghost_ind+=1
-                        # assert(p_arr[i].is_ghost != ghost_particle.is_ghost)
-
-                                
-    all_ps = np.concatenate([np.asarray(p_arr), np.asarray(ghosts)[np.nonzero(ghosts)[0]]])
-
-    all_ps.sort(order='iGroup')
-    partitions = np.unique(all_ps['iGroup'])
+    p_np = np.array(p_arr)
+    p_np.sort(order='iGroup')
+    partitions = np.unique(p_np['iGroup'])
 
     left_ind = 0
     res = []
     for partition_ind in range(len(partitions)):
         if partition_ind == len(partitions)-1: 
-            res.append((partitions[partition_ind], all_ps[left_ind:]))
+            res.append((partitions[partition_ind], p_np[left_ind:]))
         else : 
-            right_ind = bisect_left(all_ps['iGroup'], partitions[partition_ind+1])
-            res.append((partitions[partition_ind], all_ps[left_ind:right_ind]))
+            right_ind = bisect_left(p_np['iGroup'], partitions[partition_ind+1])
+            res.append((partitions[partition_ind], p_np[left_ind:right_ind]))
             left_ind=right_ind
     return res
 
+
 @cython.boundscheck(False)
-def partition_ghosts(Particle[:] p_arr, domain_containers, float tau, 
-                            double[:, :] mins,
-                            double[:, :] maxs,
-                            double[:, :] mins_buff,
-                            double[:, :] maxs_buff, 
+def partition_ghosts(Particle[:] p_arr, int N, float tau, int symmetric,
                             double[:] dom_mins, 
                             double[:] dom_maxs):
-    cdef int N = domain_containers[0].N
-    cdef unsigned int n_containers = len(domain_containers)
-    cdef unsigned int i, j, k, ghost_ind=0, n
+    cdef unsigned int i, j, k, ghost_ind=0, n, trans_max
     cdef long right_ind, left_ind
     cdef int my_bin, trans_bin
     cdef float* point
@@ -212,16 +151,18 @@ def partition_ghosts(Particle[:] p_arr, domain_containers, float tau,
                                        [tau, tau, 0], 
                                        [0, tau, tau], 
                                        [tau,tau,tau]], 
-                                      dtype=np.float32)
+                                  dtype=np.float32)
     cdef float[3] new_point
     cdef Particle[:] ghosts 
     cdef Particle ghost_particle
     cdef int[:] trans_mark = np.zeros(trans.shape[0], dtype=np.int32)
-  
+    
     # check the number of ghost particles we have
     nghosts = count_ghosts(p_arr)
     ghosts = np.zeros(nghosts*4, dtype=pdt)
     
+    trans_max = 11 if symmetric else 5
+
     with nogil:
         for i in range(p_arr.shape[0]):
             point = p_arr[i].r
@@ -235,7 +176,7 @@ def partition_ghosts(Particle[:] p_arr, domain_containers, float tau,
 
                 trans_mark[:] = -1
 
-                for j in range(trans.shape[0]):
+                for j in range(trans_max):
                     for k in range(3):
                         new_point[k] = p_arr[i].r[k] + trans[j,k]
                     

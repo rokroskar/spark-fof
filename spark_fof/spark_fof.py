@@ -18,6 +18,8 @@ import spark_fof_c
 from spark_fof_c import  remap_gid_partition_cython, \
                          relabel_groups, \
                          ghost_mask, \
+                         partition_ghosts, \
+                         partition_array, \
                          pdt
                          
 from . import fof
@@ -29,13 +31,17 @@ def partition_helper(pid):
     return pid
 
 class FOFAnalyzer():
-    def __init__(self, sc, particles, nMinMembers, nBins, tau, dom_mins=[-.5,-.5,-.5], dom_maxs=[.5,.5,.5], Npartitions=None, buffer_tau = None):
+    def __init__(self, sc, particles, 
+                 nMinMembers, nBins, tau, 
+                 dom_mins=[-.5,-.5,-.5], dom_maxs=[.5,.5,.5], 
+                 Npartitions=None, buffer_tau = None, symmetric=False):
         self.sc = sc
         self.nBins = nBins
         self.tau = tau
         self.dom_mins = dom_mins
         self.dom_maxs = dom_maxs
         self.nMinMembers = nMinMembers
+        self.symmetric = symmetric
 
         if buffer_tau is None: 
             buffer_tau = tau
@@ -67,7 +73,9 @@ class FOFAnalyzer():
         if isinstance(particles, str): 
             # we assume we have a file location
             p_rdd = spark_tipsy.read_tipsy_output(sc, particles, chunksize=1024*4)
-            self.particle_rdd = p_rdd
+            self.particle_rdd = (self._partition_rdd(p_rdd, partition_array) 
+                                     .partitionBy(self.Npartitions) 
+                                     .map(lambda (_,v): v, preservesPartitioning=True))
         
         elif isinstance(particles, pyspark.rdd.RDD):
             self.particle_rdd = particles
@@ -141,34 +149,25 @@ class FOFAnalyzer():
         return rdd.mapPartitions(ghost_map_wrapper, preservesPartitioning=True)
         
 
+    def _partition_rdd(self, rdd, function):
+        N, tau, dom_mins, dom_maxs, symmetric = self.N, self.tau, self.dom_mins, self.dom_maxs, self.symmetric
+        def partition_helper(iterator):
+            for arr in iterator: 
+                res = function(arr,N,tau,symmetric,dom_mins,dom_maxs)
+                for r in res: 
+                    yield r
+        return rdd.mapPartitions(partition_helper)
+
+
     def partition_particles(self): 
         """Partitions the particles for running local FOF"""
 
         Npartitions = self.Npartitions
-        tau, dom_mins, dom_maxs = self.tau, self.dom_mins, self.dom_maxs
-
-        # set up domain limit arrays
-        N = self.N
-        n_containers = self.n_containers
-        container_mins = self.container_mins
-        container_maxs = self.container_maxs
-        buff_mins = self.buff_mins
-        buff_maxs = self.buff_maxs
-
-        domain_containers_b = self.domain_containers_b
+        N, tau, dom_mins, dom_maxs = self.N, self.tau, self.dom_mins, self.dom_maxs
 
         # mark the ghosts
         self.particle_rdd = self.set_ghost_mask(self.particle_rdd)
-
-        # set up a helper function for calling the cython code
-        def partition_wrapper(particle_iterator): 
-            for particle_array in particle_iterator: 
-                res = spark_fof_c.partition_ghosts(particle_array, domain_containers_b.value, tau, 
-                                                          container_mins, container_maxs, 
-                                                          buff_mins, buff_maxs, dom_mins, dom_maxs)
-                for r in res: 
-                    yield r
-
+        
         if self.global_to_local_map is not None: 
             gl_to_loc_map = self.global_to_local_map
             gl_to_loc_map_b = self.sc.broadcast(gl_to_loc_map)
@@ -178,13 +177,15 @@ class FOFAnalyzer():
                 remap_gid_partition_cython(particles, gl_to_loc_map_b.value)
                 return particles
 
-            ghosts_rdd = (self.particle_rdd.mapPartitions(partition_wrapper)
-                                                .filter(lambda (k,v): k in gl_to_loc_map_b.value)
-                                                .map(lambda (k,v): (gl_to_loc_map_b.value[k],v))
-                                                .partitionBy(Npartitions)
-                                                .map(lambda (k,v): remap_partition(v), preservesPartitioning=True))
+            ghosts_rdd = (self._partition_rdd(self.particle_rdd, partition_ghosts)
+                              .filter(lambda (k,v): k in gl_to_loc_map_b.value)
+                              .map(lambda (k,v): (gl_to_loc_map_b.value[k],v))
+                              .partitionBy(Npartitions)
+                              .map(lambda (k,v): remap_partition(v), preservesPartitioning=True))
         else:
-            ghosts_rdd = (self.particle_rdd.mapPartitions(partition_wrapper).partitionBy(Npartitions).values())
+            ghosts_rdd = (self._partition_rdd(self.particle_rdd, partition_ghosts)
+                              .partitionBy(Npartitions)
+                              .map(lambda (_,v): v, preservesPartitioning=True))
 
         part_rdd = self.particle_rdd
         partitioned_rdd = ghosts_rdd + part_rdd
