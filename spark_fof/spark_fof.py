@@ -1,4 +1,3 @@
-from scipy.spatial import Rectangle
 import numpy as np
 from math import floor, ceil
 from functools import total_ordering
@@ -10,19 +9,19 @@ from itertools import izip
 import findspark
 findspark.init()
 import pyspark
-
+from pyspark.accumulators import AccumulatorParam
 from . import spark_tipsy
 
+# local imports
 import spark_fof_c
-
 from spark_fof_c import  remap_gid_partition_cython, \
                          relabel_groups, \
                          ghost_mask, \
                          partition_ghosts, \
                          partition_array, \
-                         pdt
-                         
+                         pdt       
 from . import fof
+from domain import setup_domain
 
 PRIMARY_GHOST_PARTICLE = 1
 GHOST_PARTICLE_COPY = 2 
@@ -90,6 +89,8 @@ class FOFAnalyzer():
         self.global_to_local_map = None
 
 
+    def read_file(self):
+        raise NotImplementedError()
 
     # define RDD properties 
     @property
@@ -107,7 +108,7 @@ class FOFAnalyzer():
     @property
     def merged_rdd(self):
         if self._merged_rdd is None:
-            self._merged_rdd = self.merge_groups()
+            self._merged_rdd = self._merge_groups()
         return self._merged_rdd
     
 
@@ -125,16 +126,23 @@ class FOFAnalyzer():
         return self._groups
 
     
-    
     def run_all(self): 
         """
         Run FOF, merge the groups across domains and finalize the group IDs,
         dropping ones that don't fit criteria.
         """
+        return self.final_fof_rdd
 
-    def set_ghost_mask(self, rdd):
+
+    def _set_ghost_mask(self, rdd):
         """
         Set the `is_ghost` flag for the particle arrays in the rdd.
+
+        Parameters
+        ----------
+
+        rdd : pyspark.RDD
+            the RDD of particle arrays to update with a ghost mask
         """
         tau, N, dom_mins, dom_maxs = self.tau, self.N, self.dom_mins, self.dom_maxs
         container_mins, container_maxs = self.container_mins, self.container_maxs
@@ -150,7 +158,18 @@ class FOFAnalyzer():
         
 
     def _partition_rdd(self, rdd, function):
-        """Helper function for setting up the arrays for partitioning""" 
+        """
+        Helper function for setting up the arrays for partitioning
+
+        Parameters
+        ----------
+
+        rdd : pyspark.RDD
+            the RDD of particle arrays to repartition
+        function : python function
+            the function to use that will yield tuples of (group_id, particle_array) for
+            repartitioning - see `spark_fof.spark_fof_c.partition_ghosts`
+        """ 
 
         N, tau, dom_mins, dom_maxs, symmetric = self.N, self.tau, self.dom_mins, self.dom_maxs, self.symmetric
         def partition_helper(iterator):
@@ -162,13 +181,15 @@ class FOFAnalyzer():
 
 
     def partition_particles(self): 
-        """Partitions the particles for running local FOF"""
+        """
+        Partitions the particles for running local FOF
+        """
 
         Npartitions = self.Npartitions
         N, tau, dom_mins, dom_maxs = self.N, self.tau, self.dom_mins, self.dom_maxs
 
         # mark the ghosts
-        self.particle_rdd = self.set_ghost_mask(self.particle_rdd)
+        self.particle_rdd = self._set_ghost_mask(self.particle_rdd)
         
         if self.global_to_local_map is not None: 
             gl_to_loc_map = self.global_to_local_map
@@ -223,7 +244,7 @@ class FOFAnalyzer():
         return fof_rdd
 
 
-    def get_gid_map(self, level=0):
+    def _get_gid_map(self, level=0):
         """
         Take a particle RDD and return a gid -> gid' that will link groups in the buffer region.
 
@@ -232,12 +253,6 @@ class FOFAnalyzer():
             - second, the particle IDs corresponsing to the buffer region particles
               are filtered from the full data and a map is produced that maps all groups
               onto the group corresponding to the lowest container ID
-
-        Inputs:
-
-        particle_rdd: an RDD of particles
-
-        domain_containers: sorted list of domain hyper rectangles
 
         Returns:
 
@@ -258,7 +273,7 @@ class FOFAnalyzer():
 
         return groups_map
  
-    def get_level_map(self, level=0):
+    def _get_level_map(self, level=0):
         """Produce a group re-mapping across sub-domains. Connected groups are obtained by finding
         groups belonging to the same particles and linking them into a graph. Each node in a 
         connected sub-graph is mapped to the lowest group ID in the sub-graph. 
@@ -278,7 +293,7 @@ class FOFAnalyzer():
         """
         # get the initial group mapping across sub-domains just based on
         # particle IDs
-        groups_map = self.get_gid_map(level)
+        groups_map = self._get_gid_map(level)
 
         mappings = {}
 
@@ -303,7 +318,7 @@ class FOFAnalyzer():
 
         return mappings
 
-    def merge_groups(self, level=0):
+    def _merge_groups(self, level=0):
         """
         For an RDD of particles, discover the groups connected across domain
         boundaries and remap to a lowest common group ID. 
@@ -331,7 +346,7 @@ class FOFAnalyzer():
                 yield p_arr
 
         for l in range(level, -1, -1):
-            m = self.get_level_map(l)
+            m = self._get_level_map(l)
             m_b = self.sc.broadcast(m)
             merged_rdd = fof_rdd.mapPartitions(lambda particles: remap_partition(particles, m_b.value))
 
@@ -395,168 +410,79 @@ class FOFAnalyzer():
         return final_fof_rdd
 
 
-def setup_domain(N, tau, mins, maxes):
-    """Set up the rectangles that define the domain"""
-
-    domain_containers = []
-
-    n_containers = N**3
-
-    xbins = np.linspace(mins[0], maxes[0], N+1)
-    ybins = np.linspace(mins[1], maxes[1], N+1)
-    zbins = np.linspace(mins[2], maxes[2], N+1)
-    
-    for i in range(N): 
-        for j in range(N):
-            for k in range(N): 
-                domain_containers.append(DomainRectangle([xbins[k], ybins[j], zbins[i]],
-                                                         [xbins[k+1],   ybins[j+1],   zbins[i+1]], tau=tau, N=N))
-
-    return domain_containers
-
-
 def get_bin(pos, nbins, mins, maxs):
     return spark_fof_c.get_bin_wrapper(pos, nbins, mins, maxs)
 
-def flatten(S):
-    if S == []:
-        return S
-    if isinstance(S[0], list):
-        return flatten(S[0]) + flatten(S[1:])
-    return S[:1] + flatten(S[1:])
-
-
-def get_rectangle_bin(rec, mins, maxs, nbins):
-    # take the midpoint of the rectangle
-    point = rec.mins + (rec.maxes - rec.mins) / 2.
-    return get_bin(point.astype(np.float32), nbins, mins, maxs)
-
-
-def get_buffer_particles(partition, particles, domain_containers, level=0):
-    """Produce the particles from the buffer regions"""
-    my_rect = domain_containers[partition]
-
-    # get to the correct level
-    for i in range(level):
-        my_rect = my_rect.parent
-
-    for p in np.concatenate(list(particles)):
-        if my_rect.in_buffer_zone(p):
-            yield p
-
 
 def pid_gid(p):
-    """Map the particle to its pid and gid"""
+    """
+    Map the particle to its pid and gid
+
+    Parameters
+    ----------
+
+    p : single element of a numpy array with type `spark_fof_c.pdt`
+    """
     return (p['iOrder'], p['iGroup'])
 
 
-def remap_gid(p, gid_map):
-    """Remap gid if it exists in the map"""
-    if p['iGroup'] in gid_map.keys():
-        p_c = np.copy(p)
-        p_c['iGroup'] = gid_map[p['iGroup']]
-        return p_c
-    else: 
-        return p
+class TipsyFOFAnalyzer(FOFAnalyzer):
+    
+    def read_file(self, filename, chunksize = 2048): 
+        """
+        Read a tipsy file and set the sequential particle IDs
+        
+        This scans through the data twice -- first to convert the data to fof format
+        and a second time to set the particle IDs.
+        """
+        pdt_tipsy = np.dtype([('mass', 'f4'),('pos', 'f4', 3),('vel', 'f4', 3), ('eps', 'f4'), ('phi', 'f4')])
 
-def set_local_group(partition, particles):
-    """Set an initial partition for the group ID"""
-    p_arr = np.fromiter(particles, pdt)
-    p_arr['gid'] = encode_gid(partition, 0)
-    return iter(p_arr)
+        # helper functions
+        class dictAdd(AccumulatorParam):
+            def zero(self, value):
+                return {i:0 for i in range(len(value))}
+            def addInPlace(self, val1, val2): 
+                for k, v in val2.iteritems(): 
+                    val1[k] += v
+                return val1
+
+        def convert_to_fof_particle_partition(index, iterator): 
+            for s in iterator: 
+                p_arr = np.frombuffer(s, pdt_tipsy)
+                new_arr = np.zeros(len(p_arr), dtype=pdt)
+                new_arr['pos'] = p_arr['pos']  
+                if count: 
+                    npart_acc.add({index: len(new_arr)})
+                yield new_arr
+
+        def set_particle_IDs_partition(index, iterator): 
+            p_counts = partition_counts.value
+            local_index = 0
+            start_index = sum([p_counts[i] for i in range(index)])
+            for arr in iterator:
+                arr['iOrder'] = range(start_index + local_index, start_index + local_index + len(arr))
+                local_index += len(arr)
+                yield arr
+        
+        sc = self.sc
+
+        rec_rdd = sc.binaryRecords(filename, pdt_tipsy.itemsize*chunksize)
+        nPartitions = rec_rdd.getNumPartitions()
+        # set the partition count accumulator
+        npart_acc = sc.accumulator({i:0 for i in range(nPartitions)}, dictAdd())
+        count=True
+        # read the data and count the particles per partition
+        rec_rdd = rec_rdd.mapPartitionsWithIndex(convert_to_fof_particle_partition)
+        rec_rdd.count()
+        count=False
+
+        partition_counts = sc.broadcast(npart_acc.value)
+
+        return rec_rdd.mapPartitionsWithIndex(set_particle_IDs_partition)
 
 
-class LCFOFAnalyser(FOFAnalyzer):
+
+class LCFOFAnalyzer(FOFAnalyzer):
     pass
 
 
-#################
-#
-# DOMAIN CLASSES
-#
-#################
-
-
-class DomainRectangle(Rectangle):
-    def __init__(self, mins, maxes, N=None, parent=None, tau=0.1, symmetric=False):
-        self.parent = parent
-        super(DomainRectangle, self).__init__(mins, maxes)
-        self.children = []
-        self.midpoint = self.mins + (self.maxes - self.mins) / 2.
-
-        if N is None:
-            self.N = 0
-        else:
-            self.N = N
-
-        self.tau = tau
-
-        if symmetric:
-            self.bufferRectangle = Rectangle(self.mins + tau, self.maxes - tau)
-        else: 
-            self.bufferRectangle = Rectangle(self.mins + tau, self.maxes)
-
-    def __repr__(self):
-        return "<DomainRectangle %s>" % list(zip(self.mins, self.maxes))
-
-    def get_inner_box(self, tau):
-        """Return a new hyper rectangle, shrunk by tau"""
-
-        new_rect = copy.copy(self)
-        new_rect.mins = self.mins + tau
-        new_rect.maxes = self.maxes - tau
-
-        return new_rect
-
-    def split(self, d, split, N):
-        """
-        Produce two hyperrectangles by splitting.
-        In general, if you need to compute maximum and minimum
-        distances to the children, it can be done more efficiently
-        by updating the maximum and minimum distances to the parent.
-        Parameters
-        ----------
-        d : int
-            Axis to split hyperrectangle along.
-        split : float
-            Position along axis `d` to split at.
-        """
-        mid = np.copy(self.maxes)
-        mid[d] = split
-        less = DomainRectangle(self.mins, mid, N=N, tau=self.tau)
-        mid = np.copy(self.mins)
-        mid[d] = split
-        greater = DomainRectangle(mid, self.maxes, N=N, tau=self.tau)
-
-        return less, greater
-
-    def split_domain(self, max_N=1, N=1):
-        ndim = len(self.maxes)
-
-        # Keep splitting until max level is reached
-        if N <= max_N:
-            split_point = self.mins + (self.maxes - self.mins) / 2
-            rs = self.split(0, split_point[0], N)
-
-            # split along all dimensions
-            for axis in range(1, ndim):
-                rs = [r.split(axis, split_point[axis], N) for r in rs]
-
-                if isinstance(rs[0], (tuple, list)):
-                    rs = [item for sublist in rs for item in sublist]
-
-            self.children = rs
-
-            for r in rs:
-                r.parent = self
-
-            res = flatten([r.split_domain(max_N, N + 1) for r in rs])
-
-            return res
-
-        else:
-            return self
-
-    # def in_buffer_zone(self, p):
-    #     """Determine whether a particle is in the buffer zone"""
-    #     return rect_buffer_zone_cython(p['pos'], self.mins, self.maxes, self.bufferRectangle.mins, self.bufferRectangle.maxes)
