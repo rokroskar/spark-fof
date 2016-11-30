@@ -4,6 +4,9 @@ from functools import total_ordering
 import networkx as nx
 from collections import defaultdict
 from itertools import izip 
+import re
+import time
+import os
 
 # initialize spark to load spark classes
 import findspark
@@ -29,11 +32,10 @@ GHOST_PARTICLE_COPY = 2
 def partition_helper(pid): 
     return pid
 
-class FOFAnalyzer():
-    def __init__(self, sc, particles, 
-                 nMinMembers, nBins, tau, 
+class FOFAnalyzer(object):
+    def __init__(self, sc, particles, nMinMembers, nBins, tau, 
                  dom_mins=[-.5,-.5,-.5], dom_maxs=[.5,.5,.5], 
-                 Npartitions=None, buffer_tau = None, symmetric=False):
+                 Npartitions=None, buffer_tau = None, symmetric=False, **kwargs):
         self.sc = sc
         self.nBins = nBins
         self.tau = tau
@@ -56,8 +58,6 @@ class FOFAnalyzer():
         self.buff_mins = np.zeros((self.n_containers, 3))
         self.buff_maxs = np.zeros((self.n_containers, 3))
 
-        self.domain_containers_b = self.sc.broadcast(domain_containers)
-
         for i in range(self.n_containers): 
             self.container_mins[i] = domain_containers[i].mins
             self.container_maxs[i] = domain_containers[i].maxes
@@ -71,7 +71,7 @@ class FOFAnalyzer():
 
         if isinstance(particles, str): 
             # we assume we have a file location
-            p_rdd = spark_tipsy.read_tipsy_output(sc, particles, chunksize=1024*4)
+            p_rdd = self.read_data(sc, particles, **kwargs)
             self.particle_rdd = (self._partition_rdd(p_rdd, partition_array) 
                                      .partitionBy(self.Npartitions) 
                                      .map(lambda (_,v): v, preservesPartitioning=True))
@@ -86,10 +86,8 @@ class FOFAnalyzer():
         self._final_fof_rdd = None
         self._groups = None
 
-        self.global_to_local_map = None
 
-
-    def read_file(self):
+    def read_data(self):
         raise NotImplementedError()
 
     # define RDD properties 
@@ -318,6 +316,7 @@ class FOFAnalyzer():
 
         return mappings
 
+
     def _merge_groups(self, level=0):
         """
         For an RDD of particles, discover the groups connected across domain
@@ -426,9 +425,18 @@ def pid_gid(p):
     return (p['iOrder'], p['iGroup'])
 
 
+class dictAdd(AccumulatorParam):
+            def zero(self, value):
+                return {i:0 for i in range(len(value))}
+            def addInPlace(self, val1, val2): 
+                for k, v in val2.iteritems(): 
+                    val1[k] += v
+                return val1
+
+
 class TipsyFOFAnalyzer(FOFAnalyzer):
     
-    def read_file(self, filename, chunksize = 2048): 
+    def read_data(self, filename, chunksize = 2048): 
         """
         Read a tipsy file and set the sequential particle IDs
         
@@ -438,14 +446,6 @@ class TipsyFOFAnalyzer(FOFAnalyzer):
         pdt_tipsy = np.dtype([('mass', 'f4'),('pos', 'f4', 3),('vel', 'f4', 3), ('eps', 'f4'), ('phi', 'f4')])
 
         # helper functions
-        class dictAdd(AccumulatorParam):
-            def zero(self, value):
-                return {i:0 for i in range(len(value))}
-            def addInPlace(self, val1, val2): 
-                for k, v in val2.iteritems(): 
-                    val1[k] += v
-                return val1
-
         def convert_to_fof_particle_partition(index, iterator): 
             for s in iterator: 
                 p_arr = np.frombuffer(s, pdt_tipsy)
@@ -483,6 +483,116 @@ class TipsyFOFAnalyzer(FOFAnalyzer):
 
 
 class LCFOFAnalyzer(FOFAnalyzer):
-    pass
+    # these set up the grid 
+    # diff is the width of each grid cell 
+    diff = np.float32(0.033068776)
+    global_min = -31*diff
+    global_max = 31*diff
+
+    # domain limits
+    dom_maxs = np.array([global_max]*3, dtype=np.float64)
+    dom_mins = np.array([global_min]*3, dtype=np.float64)
+
+    # linking length and buffer region size
+    #tau = diff*5./125.
+    tau = 0.2/12600
+    buffer_tau = diff*5./150.
+
+    def __init__(self, sc, path, *args, **kwargs):
+        self.path = path
+        self._ids_map = None
+        self._global_to_local_map = None
+
+        super(LCFOFAnalyzer, self).__init__(sc, path, *args, **kwargs)
+
+    @property
+    def global_to_local_map(self):
+        # function to map from file block numbers to domain bin
+        Ngrid = 62
+        map_file_to_domain = lambda (x,y,z): (x-1) + (y-1)*Ngrid + (z-1)*Ngrid*Ngrid
+
+        if self._global_to_local_map is None: 
+            m = {}
+            for k,v in self.ids_map.iteritems(): 
+                m[map_file_to_domain(k)] = v
+            self._global_to_local_map = m
+        return self._global_to_local_map
 
 
+    def read_data(self, sc, path, **kwargs):
+        """
+        Read all the blocks found in the directory tree starting at `path`. 
+        All files fitting the pattern `blk.ii.jj.kki` will be read.
+        """
+
+        from glob import glob
+        pdt_lc = np.dtype([('pos', 'f4', 3),('vel', 'f4', 3)])
+
+        blockids = kwargs['blockids']
+
+        def set_particle_IDs_partition(index, iterator): 
+            """
+            Use the aggregate partition counts to set monotonically increasing 
+            particle indices
+            """
+            p_counts = partition_counts.value
+            local_index = 0
+            start_index = sum([p_counts[i] for i in range(index)])
+            for arr in iterator:
+                arr['iOrder'] = range(start_index + local_index, start_index + local_index + len(arr))
+                arr['iGroup'] = index
+                local_index += len(arr)
+                yield arr
+        
+        def read_file(index, i, chunksize=102400): 
+            for part,filename in i:
+                timein = time.time()
+                with open(filename,'rb') as f: 
+                    header = f.read(62500)
+                    while True:
+                        chunk = f.read(chunksize*24)
+                        if len(chunk): 
+                            p_arr = np.frombuffer(chunk, pdt_lc)
+                            new_arr = np.zeros(len(p_arr), dtype=pdt)
+                            new_arr['pos'] = p_arr['pos']
+                            npart_acc.add({index: len(p_arr)})
+                            yield new_arr
+                        else: 
+                            print 'reading %s took %d seconds in partition %d'%(filename, time.time()-timein, index)
+                            break
+        
+        # determine which files to read
+        get_block_ids = re.compile('blk\.(\d+)\.(\d+)\.(\d+)i')
+
+        if blockids is None: 
+            files = glob(os.path.join(self.path,'*/*'))
+        else: 
+            files = []
+            for dirname, subdirlist, filelist in os.walk(path):
+                for f in filelist:
+                    ids = get_block_ids.findall(f)[0]
+                    if all(int(x) in blockids for x in ids):
+                        files.append(os.path.join(dirname,f))
+
+        nfiles = len(files) 
+        print 'Number of input files: ', nfiles
+        
+        ids = map(lambda x: tuple(map(int, get_block_ids.findall(x)[0])), files)
+        ids_map = {x:i for i,x in enumerate(ids)}
+        self.ids_map = ids_map
+
+        ids_map_b = sc.broadcast(ids_map)
+        
+        # set the partition count accumulator
+        npart_acc = sc.accumulator({i:0 for i in range(nfiles)}, dictAdd())
+        
+        rec_rdd = (sc.parallelize(zip(ids,files), numSlices=sc.defaultParallelism)
+                     .map(lambda (id,filename): (ids_map_b.value[id],filename))
+                     .partitionBy(sc.defaultParallelism)
+                     .mapPartitionsWithIndex(read_file, preservesPartitioning=True))
+      
+        rec_rdd.count()
+        partition_counts = sc.broadcast(npart_acc.value)
+        
+        return rec_rdd.mapPartitionsWithIndex(set_particle_IDs_partition, 
+                                                       preservesPartitioning=True)
