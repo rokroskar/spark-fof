@@ -127,6 +127,15 @@ def tipsy_analyzer_single(sc, request):
     return tipsy_analyzer
 
 
+@pytest.fixture(scope='module')
+def ps_fof(tipsy_analyzer, request):
+    """Run single-core fof on the particles"""
+    from spark_fof.fof import fof
+    ps = np.concatenate(tipsy_analyzer.particle_rdd.collect())
+    fof.run(ps,tau,tipsy_analyzer.nMinMembers)
+    return ps
+
+
 def count_particles(rdd): 
     """Helper function to add up the lenghts of all the particle arrays"""
     return rdd.map(lambda arr: len(arr)).treeReduce(lambda a,b: a+b)
@@ -161,8 +170,21 @@ def test_group_count(tipsy_analyzer):
     assert(len(tipsy_analyzer.groups) == correct_groups[tipsy_analyzer.nMinMembers])
 
 
-def test_singlecore_fof(tipsy_analyzer):
+def test_singlecore_fof(ps_fof, tipsy_analyzer):
     """Check that singlecore cython-wrapped code works as expected"""
-    from spark_fof.fof import fof
-    ps = np.concatenate(tipsy_analyzer.particle_rdd.collect())
-    n_groups = fof.run(ps, tau, tipsy_analyzer.nMinMembers)
+    pcounts = np.bincount(ps_fof['iGroup'])
+    assert(len(pcounts)-1 == correct_groups[tipsy_analyzer.nMinMembers])
+
+
+def test_detailed_particle_counts(ps_fof, tipsy_analyzer):
+    """Test that the counts of particle group counts match"""
+    group_count_counts = np.bincount(np.bincount(ps_fof['iGroup'])[1:])
+    
+    # trigger the full calculation in case it hasn't been done
+    tipsy_analyzer.groups
+
+    # get the count of group counts from the spark fof
+    group_count_arr = np.array([y for x,y in tipsy_analyzer.total_group_counts])
+    group_count_counts2 = np.bincount(group_count_arr)
+
+    assert(np.all(group_count_counts2 == group_count_counts))

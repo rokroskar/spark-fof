@@ -353,15 +353,16 @@ class FOFAnalyzer(object):
                                           .reduceByKey(lambda a,b: a+b)
                                           .filter(lambda (g,cnt): cnt>=nMinMembers))
 
+        self.total_group_counts_rdd = group_counts.filter(lambda (gid,cnt): gid not in gr_map_inv_b.value) + merge_group_counts
+
         # combine the group counts
-        total_group_counts = (group_counts.filter(lambda (gid,cnt): gid not in gr_map_inv_b.value) + merge_group_counts).collect()
-        self.total_group_counts = total_group_counts
+        self.total_group_counts = self.total_group_counts_rdd.collect()
         
         # get the final group mapping by sorting groups by particle count
         timein = time.time()
         groups_map = {}
         self._groups = {}
-        for i, (g,c) in enumerate(total_group_counts): 
+        for i, (g,c) in enumerate(self.total_group_counts): 
             groups_map[g] = i+1
             self._groups[i] = c
 
