@@ -35,7 +35,7 @@ def partition_helper(pid):
 class FOFAnalyzer(object):
     def __init__(self, sc, particles, nMinMembers, nBins, tau, 
                  dom_mins=[-.5,-.5,-.5], dom_maxs=[.5,.5,.5], 
-                 Npartitions=None, buffer_tau = None, symmetric=False, **kwargs):
+                 nPartitions=None, buffer_tau = None, symmetric=False, **kwargs):
         self.sc = sc
         self.nBins = nBins
         self.tau = tau
@@ -64,20 +64,17 @@ class FOFAnalyzer(object):
             self.buff_mins[i] = domain_containers[i].bufferRectangle.mins
             self.buff_maxs[i] = domain_containers[i].bufferRectangle.maxes
 
-        if Npartitions is None: 
-            self.Npartitions = len(domain_containers)
+        if nPartitions is None: 
+            self.nPartitions = len(domain_containers)
         else: 
-            self.Npartitions = Npartitions
+            self.nPartitions = nPartitions
 
         if isinstance(particles, str): 
-            # we assume we have a file location
-            p_rdd = self.read_data(sc, particles, **kwargs)
-            self.particle_rdd = (self._partition_rdd(p_rdd, partition_array) 
-                                     .partitionBy(self.Npartitions) 
-                                     .map(lambda (_,v): v, preservesPartitioning=True))
-        
+            self.particle_rdd = self.read_data(particles, **kwargs)
         elif isinstance(particles, pyspark.rdd.RDD):
             self.particle_rdd = particles
+        else: 
+            raise RuntimeError('particles need to be either a filesystem location or a pyspark rdd')
 
         # set up RDD place-holders
         self._partitioned_rdd = None
@@ -183,30 +180,16 @@ class FOFAnalyzer(object):
         Partitions the particles for running local FOF
         """
 
-        Npartitions = self.Npartitions
+        nPartitions = self.nPartitions
         N, tau, dom_mins, dom_maxs = self.N, self.tau, self.dom_mins, self.dom_maxs
 
         # mark the ghosts
         self.particle_rdd = self._set_ghost_mask(self.particle_rdd)
         
-        if self.global_to_local_map is not None: 
-            gl_to_loc_map = self.global_to_local_map
-            gl_to_loc_map_b = self.sc.broadcast(gl_to_loc_map)
-
-            def remap_partition(particles):
-                """Helper function to remap groups"""
-                remap_gid_partition_cython(particles, gl_to_loc_map_b.value)
-                return particles
-
-            ghosts_rdd = (self._partition_rdd(self.particle_rdd, partition_ghosts)
-                              .filter(lambda (k,v): k in gl_to_loc_map_b.value)
-                              .map(lambda (k,v): (gl_to_loc_map_b.value[k],v))
-                              .partitionBy(Npartitions)
-                              .map(lambda (k,v): remap_partition(v), preservesPartitioning=True))
-        else:
-            ghosts_rdd = (self._partition_rdd(self.particle_rdd, partition_ghosts)
-                              .partitionBy(Npartitions)
-                              .map(lambda (_,v): v, preservesPartitioning=True))
+        
+        ghosts_rdd = (self._partition_rdd(self.particle_rdd, partition_ghosts)
+                          .partitionBy(nPartitions)
+                          .map(lambda (_,v): v, preservesPartitioning=True))
 
         part_rdd = self.particle_rdd
         partitioned_rdd = ghosts_rdd + part_rdd
@@ -264,7 +247,7 @@ class FOFAnalyzer(object):
 
         groups_map = (fof_rdd.flatMap(lambda p: p[np.where(p['is_ghost'])[0]])
                              .map(pid_gid)
-                             .groupByKey(N_partitions)
+                             .groupByKey()
                              .values()
                              .map(lambda x: sorted(x))
                              .flatMap(lambda gs: [(g, gs[0]) for g in gs[1:]])).collect()
@@ -478,8 +461,10 @@ class TipsyFOFAnalyzer(FOFAnalyzer):
 
         partition_counts = sc.broadcast(npart_acc.value)
 
-        return rec_rdd.mapPartitionsWithIndex(set_particle_IDs_partition)
-
+        rec_rdd = rec_rdd.mapPartitionsWithIndex(set_particle_IDs_partition)
+        rec_rdd = (self._partition_rdd(rec_rdd, partition_array).partitionBy(self.nPartitions) 
+                                                                .map(lambda (_,v): v, preservesPartitioning=True))  
+        return rec_rdd
 
 
 class LCFOFAnalyzer(FOFAnalyzer):
@@ -519,13 +504,25 @@ class LCFOFAnalyzer(FOFAnalyzer):
         return self._global_to_local_map
 
 
-    def read_data(self, sc, path, **kwargs):
+    def read_data(self, path, **kwargs):
         """
-        Read all the blocks found in the directory tree starting at `path`. 
-        All files fitting the pattern `blk.ii.jj.kki` will be read.
+        Read blocks found under `path`
+
+        If `blockids` keyword is provided, only blocks in `blockids` will be read, 
+        otherwise all files matching blk.X.Y.Zi will be read. 
+
+        Parameters
+        ----------
+
+        sc: pyspark.SparkContext
+
+        path: directory path
+
+        blockids: list of block ids to read (optional)
         """
 
         from glob import glob
+        sc = self.sc
         pdt_lc = np.dtype([('pos', 'f4', 3),('vel', 'f4', 3)])
 
         blockids = kwargs['blockids']
@@ -575,6 +572,9 @@ class LCFOFAnalyzer(FOFAnalyzer):
                         files.append(os.path.join(dirname,f))
 
         nfiles = len(files) 
+
+        self.nPartitions = nfiles
+
         print 'Number of input files: ', nfiles
         
         ids = map(lambda x: tuple(map(int, get_block_ids.findall(x)[0])), files)
@@ -586,9 +586,9 @@ class LCFOFAnalyzer(FOFAnalyzer):
         # set the partition count accumulator
         npart_acc = sc.accumulator({i:0 for i in range(nfiles)}, dictAdd())
         
-        rec_rdd = (sc.parallelize(zip(ids,files), numSlices=sc.defaultParallelism)
+        rec_rdd = (sc.parallelize(zip(ids,files), numSlices=self.nPartitions)
                      .map(lambda (id,filename): (ids_map_b.value[id],filename))
-                     .partitionBy(sc.defaultParallelism)
+                     .partitionBy(self.nPartitions)
                      .mapPartitionsWithIndex(read_file, preservesPartitioning=True))
       
         rec_rdd.count()
@@ -596,3 +596,35 @@ class LCFOFAnalyzer(FOFAnalyzer):
         
         return rec_rdd.mapPartitionsWithIndex(set_particle_IDs_partition, 
                                                        preservesPartitioning=True)
+
+        def partition_particles(self): 
+            """
+            Partitions the particles for running local FOF
+            """
+
+            nPartitions = self.nPartitions
+            N, tau, dom_mins, dom_maxs = self.N, self.tau, self.dom_mins, self.dom_maxs
+
+            # mark the ghosts
+            self.particle_rdd = self._set_ghost_mask(self.particle_rdd)
+            
+            gl_to_loc_map = self.global_to_local_map
+            gl_to_loc_map_b = self.sc.broadcast(gl_to_loc_map)
+
+            def remap_partition(particles):
+                """Helper function to remap groups"""
+                remap_gid_partition_cython(particles, gl_to_loc_map_b.value)
+                return particles
+
+            ghosts_rdd = (self._partition_rdd(self.particle_rdd, partition_ghosts)
+                              .filter(lambda (k,v): k in gl_to_loc_map_b.value)
+                              .map(lambda (k,v): (gl_to_loc_map_b.value[k],v))
+                              .partitionBy(nPartitions)
+                              .map(lambda (k,v): remap_partition(v), preservesPartitioning=True))
+        
+            part_rdd = self.particle_rdd
+            partitioned_rdd = ghosts_rdd + part_rdd
+            self._partitioned_rdd = partitioned_rdd
+
+            return partitioned_rdd
+
