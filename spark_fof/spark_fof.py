@@ -13,6 +13,8 @@ import findspark
 findspark.init()
 import pyspark
 from pyspark.accumulators import AccumulatorParam
+from pyspark.sql import SQLContext, Row
+import graphframes
 from . import spark_tipsy
 
 # local imports
@@ -240,7 +242,6 @@ class FOFAnalyzer(object):
         list of tuples of (src,dst) group ID mappings 
         """
         fof_rdd = self.fof_rdd
-        domain_containers = self.domain_containers
         sc = self.sc
 
         N_partitions = sc.defaultParallelism*10
@@ -249,88 +250,64 @@ class FOFAnalyzer(object):
                              .map(pid_gid)
                              .groupByKey()
                              .values()
+                             .filter(lambda x: len(x)>1)
                              .map(lambda x: sorted(x))
-                             .flatMap(lambda gs: [(g, gs[0]) for g in gs[1:]])).collect()
+                             .flatMap(lambda gs: [(g, gs[0]) for g in gs[1:]]))
 
         return groups_map
  
-    def _get_level_map(self, level=0):
+    def _get_level_map(self):
         """Produce a group re-mapping across sub-domains. Connected groups are obtained by finding
         groups belonging to the same particles and linking them into a graph. Each node in a 
         connected sub-graph is mapped to the lowest group ID in the sub-graph. 
-
-        Inputs: 
-
-        particle_rdd: of particles
-
-        domain_containers: sorted list of domain hyper rectangles
-
-        Optional Keywords: 
-
-        level: how many levels up from the base domain to begin; starting at 
-               a higher level might reduce the total number of groups that 
-               need to be considered. Default is 0, meaning that the merging 
-               takes place at the finest sub-domain level. 
         """
+
         # get the initial group mapping across sub-domains just based on
         # particle IDs
-        groups_map = self._get_gid_map(level)
+        groups_map = self._get_gid_map()
 
-        mappings = {}
+        sc = self.sc
 
-        if len(groups_map) > 0:
-            src, dst = zip(*groups_map)
+        sqc = SQLContext(sc)
 
-            # generate the graph
-            g = nx.Graph()
-            g.add_nodes_from(src + dst)
+        # create the spark GraphFrame with group IDs as nodes and group connections as edges
+        v_df = sqc.createDataFrame(groups_map.flatMap(lambda x: x).distinct().map(lambda v: Row(id=int(v))))
+        e_df = sqc.createDataFrame(groups_map.map(lambda (s,d): Row(src=int(s), dst=int(d))))
+        g_graph = graphframes.GraphFrame(v_df, e_df)
+        
+        # generate mapping
+        def make_mapping(items): 
+            """Helper function to generate mappings to lowest node ID"""
+            compid, nodes = items
+            nodes = list(nodes)
+            base_node = min(nodes)
+            return [(node,base_node) for node in nodes if node != base_node]
+        
+        mapping = (g_graph.connectedComponents()
+                          .rdd.map(lambda row: (row.component, row.id))
+                          .groupByKey()
+                          .filter(lambda (k,v): len(v.data)>1)
+                          .flatMap(make_mapping)
+                          .collectAsMap())
+        return mapping
 
-            for e in groups_map:
-                g.add_edge(*e)
 
-            # process the connected components
-            for sg in nx.connected.connected_component_subgraphs(g):
-                if len(sg) > 1:
-                    # generate mapping to lowest-common-group
-                    base_node = min(sg.nodes())
-                    new_mapping = {
-                        node: base_node for node in sg.nodes() if node != base_node}
-                    mappings.update(new_mapping)
-
-        return mappings
-
-
-    def _merge_groups(self, level=0):
+    def _merge_groups(self):
         """
         For an RDD of particles, discover the groups connected across domain
         boundaries and remap to a lowest common group ID. 
-
-        Inputs: 
-
-        particle_rdd: RDD of Particles
-
-        domain_containers: sorted list of domain hyper rectangles
-
-        Optional Keywords:
-
-        level: how many levels up from the base domain to begin; starting at 
-               a higher level might reduce the total number of groups that 
-               need to be considered. Default is 0, meaning that the merging 
-               takes place at the finest sub-domain level. 
         """
         fof_rdd = self.fof_rdd
-        domain_containers = self.domain_containers
-
+       
         def remap_partition(particles, gmap):
             """Helper function to remap groups"""
             for p_arr in particles: 
                 remap_gid_partition_cython(p_arr, gmap)
                 yield p_arr
 
-        for l in range(level, -1, -1):
-            m = self._get_level_map(l)
-            m_b = self.sc.broadcast(m)
-            merged_rdd = fof_rdd.mapPartitions(lambda particles: remap_partition(particles, m_b.value))
+        m = self._get_level_map()
+        m_b = self.sc.broadcast(m)
+        merged_rdd = fof_rdd.mapPartitions(lambda particles: remap_partition(particles, m_b.value))
 
         self.group_merge_map = m
 
@@ -381,13 +358,17 @@ class FOFAnalyzer(object):
         self.total_group_counts = total_group_counts
         
         # get the final group mapping by sorting groups by particle count
+        timein = time.time()
         groups_map = {}
         self._groups = {}
         for i, (g,c) in enumerate(total_group_counts): 
             groups_map[g] = i+1
             self._groups[i] = c
 
-        final_fof_rdd = no_ghosts_rdd.map(lambda p_arr: relabel_groups_wrapper(p_arr, groups_map))
+        print 'Final group map build took %f seconds'%(time.time() - timein)
+        groups_map_b = sc.broadcast(groups_map)
+
+        final_fof_rdd = no_ghosts_rdd.map(lambda p_arr: relabel_groups_wrapper(p_arr, groups_map_b.value))
 
         return final_fof_rdd
 
@@ -588,7 +569,7 @@ class LCFOFAnalyzer(FOFAnalyzer):
         
         rec_rdd = (sc.parallelize(zip(ids,files), numSlices=self.nPartitions)
                      .map(lambda (id,filename): (ids_map_b.value[id],filename))
-                     .partitionBy(self.nPartitions)
+                     .partitionBy(self.nPartitions).cache()
                      .mapPartitionsWithIndex(read_file, preservesPartitioning=True))
       
         rec_rdd.count()

@@ -1,4 +1,5 @@
 import pytest
+import sparkhpc
 from sparkhpc import sparkjob
 import numpy as np
 
@@ -96,7 +97,7 @@ def sc():
     import os
 
     os.environ['SPARK_DRIVER_MEMORY'] = '8G'
-    sc = SparkContext(master="local[2]")
+    sc = sparkhpc.start_spark(master="local[2]")
 
     yield sc
 
