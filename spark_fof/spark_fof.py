@@ -199,6 +199,7 @@ class FOFAnalyzer(object):
 
         return partitioned_rdd
 
+
     def run_fof(self):
         """
         Run FOF on the particles 
@@ -210,6 +211,7 @@ class FOFAnalyzer(object):
         def run_local_fof(partition_index, particle_iter, tau, nMinMembers, batch_size=1024*256): 
             """Helper function to run FOF locally on the individual partitions"""
             part_arr = np.hstack(particle_iter)
+            print 'running local fof on %d started at %f'%(partition_index, time.time())
             if len(part_arr)>0:
                 # run fof
                 fof.run(part_arr, tau, nMinMembers)
@@ -244,11 +246,11 @@ class FOFAnalyzer(object):
         fof_rdd = self.fof_rdd
         sc = self.sc
 
-        N_partitions = sc.defaultParallelism*10
+        nPartitions = sc.defaultParallelism*5
 
         groups_map = (fof_rdd.flatMap(lambda p: p[np.where(p['is_ghost'])[0]])
                              .map(pid_gid)
-                             .groupByKey()
+                             .groupByKey(nPartitions)
                              .values()
                              .filter(lambda x: len(x)>1)
                              .map(lambda x: sorted(x))
@@ -256,6 +258,7 @@ class FOFAnalyzer(object):
 
         return groups_map
  
+
     def _get_level_map(self):
         """Produce a group re-mapping across sub-domains. Connected groups are obtained by finding
         groups belonging to the same particles and linking them into a graph. Each node in a 
@@ -283,9 +286,11 @@ class FOFAnalyzer(object):
             base_node = min(nodes)
             return [(node,base_node) for node in nodes if node != base_node]
         
+        nPartitions = sc.defaultParallelism*5
+
         mapping = (g_graph.connectedComponents()
                           .rdd.map(lambda row: (row.component, row.id))
-                          .groupByKey()
+                          .groupByKey(nPartitions)
                           .filter(lambda (k,v): len(v.data)>1)
                           .flatMap(make_mapping)
                           .collectAsMap())
@@ -336,6 +341,8 @@ class FOFAnalyzer(object):
         merged_rdd = self.merged_rdd
         sc = self.sc
 
+        nPartitions = sc.defaultParallelism*5
+
         # we need to use the group merge map used in a previous step to see which 
         # groups are actually spread across domain boundaries
         group_merge_map = self.group_merge_map
@@ -350,19 +357,18 @@ class FOFAnalyzer(object):
 
         # merge the groups that reside in multiple domains
         merge_group_counts = (group_counts.filter(lambda (g,cnt): g in gr_map_inv_b.value)
-                                          .reduceByKey(lambda a,b: a+b)
+                                          .reduceByKey(lambda a,b: a+b, nPartitions)
                                           .filter(lambda (g,cnt): cnt>=nMinMembers))
 
-        self.total_group_counts_rdd = group_counts.filter(lambda (gid,cnt): gid not in gr_map_inv_b.value) + merge_group_counts
-
         # combine the group counts
-        self.total_group_counts = self.total_group_counts_rdd.collect()
+        total_group_counts = (group_counts.filter(lambda (gid,cnt): gid not in gr_map_inv_b.value) + merge_group_counts).collect()
+        self.total_group_counts = total_group_counts
         
         # get the final group mapping by sorting groups by particle count
         timein = time.time()
         groups_map = {}
         self._groups = {}
-        for i, (g,c) in enumerate(self.total_group_counts): 
+        for i, (g,c) in enumerate(total_group_counts): 
             groups_map[g] = i+1
             self._groups[i] = c
 
@@ -379,14 +385,7 @@ def get_bin(pos, nbins, mins, maxs):
 
 
 def pid_gid(p):
-    """
-    Map the particle to its pid and gid
-
-    Parameters
-    ----------
-
-    p : single element of a numpy array with type `spark_fof_c.pdt`
-    """
+    """Map the particle to its pid and gid"""
     return (p['iOrder'], p['iGroup'])
 
 
@@ -534,7 +533,6 @@ class LCFOFAnalyzer(FOFAnalyzer):
                             p_arr = np.frombuffer(chunk, pdt_lc)
                             new_arr = np.zeros(len(p_arr), dtype=pdt)
                             new_arr['pos'] = p_arr['pos']
-                            npart_acc.add({index: len(p_arr)})
                             yield new_arr
                         else: 
                             print 'reading %s took %d seconds in partition %d'%(filename, time.time()-timein, index)
@@ -552,32 +550,34 @@ class LCFOFAnalyzer(FOFAnalyzer):
                     ids = get_block_ids.findall(f)[0]
                     if all(int(x) in blockids for x in ids):
                         files.append(os.path.join(dirname,f))
-
+        files.sort()
         nfiles = len(files) 
-
         self.nPartitions = nfiles
 
         print 'Number of input files: ', nfiles
-        
+
+        # set up the map from x,y,z to partition id        
         ids = map(lambda x: tuple(map(int, get_block_ids.findall(x)[0])), files)
         ids_map = {x:i for i,x in enumerate(ids)}
         self.ids_map = ids_map
 
         ids_map_b = sc.broadcast(ids_map)
         
-        # set the partition count accumulator
-        npart_acc = sc.accumulator({i:0 for i in range(nfiles)}, dictAdd())
-        
+        # get particle counts per partition
+        nparts = {i:_get_nparts(filename,62500,pdt_lc.itemsize) for i,filename in enumerate(files)}
+
+        print 'Total number of particles: ', np.array(nparts.values).sum()
+
+        partition_counts = sc.broadcast(nparts)
+
         rec_rdd = (sc.parallelize(zip(ids,files), numSlices=self.nPartitions)
                      .map(lambda (id,filename): (ids_map_b.value[id],filename))
                      .partitionBy(self.nPartitions).cache()
-                     .mapPartitionsWithIndex(read_file, preservesPartitioning=True))
+                     .mapPartitionsWithIndex(read_file, preservesPartitioning=True)
+                     .mapPartitionsWithIndex(set_particle_IDs_partition, 
+                                                       preservesPartitioning=True))
       
-        rec_rdd.count()
-        partition_counts = sc.broadcast(npart_acc.value)
-        
-        return rec_rdd.mapPartitionsWithIndex(set_particle_IDs_partition, 
-                                                       preservesPartitioning=True)
+        return rec_rdd
 
         def partition_particles(self): 
             """
@@ -610,3 +610,6 @@ class LCFOFAnalyzer(FOFAnalyzer):
 
             return partitioned_rdd
 
+def _get_nparts(filename,headersize,itemsize): 
+    """Helper function to get the number of particles in the file"""
+    return (os.path.getsize(filename)-headersize)/itemsize
