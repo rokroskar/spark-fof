@@ -93,6 +93,21 @@ cpdef remap_gid_partition_cython(Particle [:] p_arr, dict gid_map):
 
 
 @cython.boundscheck(False)
+def count_groups_cython(Particle [:] p_arr):
+    """Count particles per group and yield one group at a time"""
+    cdef int i
+    cdef long [:] gc_mv
+    cdef long [:] counts_mv
+
+    gc, counts = np.unique(np.asarray(p_arr)['iGroup'], return_counts=True)
+
+    gc_mv = gc
+    counts_mv = counts
+
+    for i in range(gc_mv.shape[0]):
+        yield (gc_mv[i], counts_mv[i])
+
+@cython.boundscheck(False)
 cdef long count_ghosts(Particle [:] p_arr) nogil: 
     """Return the number of ghost particles in the array"""
     cdef long nghosts=0

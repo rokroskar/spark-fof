@@ -7,6 +7,7 @@ from itertools import izip
 import re
 import time
 import os
+import gc 
 
 # initialize spark to load spark classes
 import findspark
@@ -14,6 +15,7 @@ findspark.init()
 import pyspark
 from pyspark.accumulators import AccumulatorParam
 from pyspark.sql import SQLContext, Row
+from pyspark.storagelevel import StorageLevel 
 import graphframes
 from . import spark_tipsy
 
@@ -208,14 +210,17 @@ class FOFAnalyzer(object):
         """
         tau = self.tau
 
-        def run_local_fof(partition_index, particle_iter, tau, nMinMembers, batch_size=1024*256): 
+        def run_local_fof(partition_index, particle_iter, tau, nMinMembers, batch_size=1024*10240): 
             """Helper function to run FOF locally on the individual partitions"""
             part_arr = np.hstack(particle_iter)
-            print 'running local fof on %d started at %f'%(partition_index, time.time())
             if len(part_arr)>0:
+                tin = time.time()
+                t = time.localtime()
+                print 'running local fof on {part} started at {t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'.format(part=partition_index,t=t)
                 # run fof
                 fof.run(part_arr, tau, nMinMembers)
-                
+                print 'fof on {part} finished in {seconds}'.format(part=partition_index, seconds=time.time()-tin)
+
                 # encode the groupID  
                 spark_fof_c.encode_gid(part_arr, partition_index)
         
@@ -224,7 +229,7 @@ class FOFAnalyzer(object):
 
         partitioned_rdd = self.partitioned_rdd
 
-        fof_rdd = partitioned_rdd.mapPartitionsWithIndex(lambda index, particles: run_local_fof(index, particles, tau, 1)).cache()
+        fof_rdd = partitioned_rdd.mapPartitionsWithIndex(lambda index, particles: run_local_fof(index, particles, tau, 1))
 
         return fof_rdd
 
@@ -264,7 +269,6 @@ class FOFAnalyzer(object):
         groups belonging to the same particles and linking them into a graph. Each node in a 
         connected sub-graph is mapped to the lowest group ID in the sub-graph. 
         """
-
         # get the initial group mapping across sub-domains just based on
         # particle IDs
         groups_map = self._get_gid_map()
@@ -273,10 +277,14 @@ class FOFAnalyzer(object):
 
         sqc = SQLContext(sc)
 
+        
         # create the spark GraphFrame with group IDs as nodes and group connections as edges
-        v_df = sqc.createDataFrame(groups_map.flatMap(lambda x: x).distinct().map(lambda v: Row(id=int(v))))
+        v_df = sqc.createDataFrame(groups_map.flatMap(lambda x: x)
+                                             .distinct()
+                                             .map(lambda v: Row(id=int(v))))
         e_df = sqc.createDataFrame(groups_map.map(lambda (s,d): Row(src=int(s), dst=int(d))))
-        g_graph = graphframes.GraphFrame(v_df, e_df)
+
+        g_graph = graphframes.GraphFrame(v_df, e_df).persist(StorageLevel.MEMORY_AND_DISK_SER)
         
         # generate mapping
         def make_mapping(items): 
@@ -288,12 +296,15 @@ class FOFAnalyzer(object):
         
         nPartitions = sc.defaultParallelism*5
 
+        timein = time.time()
         mapping = (g_graph.connectedComponents()
                           .rdd.map(lambda row: (row.component, row.id))
                           .groupByKey(nPartitions)
                           .filter(lambda (k,v): len(v.data)>1)
                           .flatMap(make_mapping)
                           .collectAsMap())
+
+        print 'domain group mapping build took %f seconds'%(time.time()-timein)
         return mapping
 
 
@@ -325,23 +336,15 @@ class FOFAnalyzer(object):
 
         Returns a list of relabeled group IDs and particle counts.
         """
-
-        nMinMembers = self.nMinMembers
-
-        def count_groups_partition(particle_arrays, gr_map_inv_b, nMinMembers): 
-            p_arr = np.concatenate(list(particle_arrays))
-            gs, counts = np.unique(p_arr['iGroup'], return_counts=True)
-            gr_map_inv = gr_map_inv_b.value
-            return ((g,cnt) for g,cnt in izip(gs,counts) if (g in gr_map_inv) or (cnt >= nMinMembers))
-
-        def relabel_groups_wrapper(p_arr, groups_map): 
-            relabel_groups(p_arr, groups_map)
-            return p_arr            
+        from pyspark.sql import Row
 
         merged_rdd = self.merged_rdd
         sc = self.sc
+        sqc = pyspark.sql.SQLContext(sc)
 
         nPartitions = sc.defaultParallelism*5
+
+        nMinMembers = self.nMinMembers
 
         # we need to use the group merge map used in a previous step to see which 
         # groups are actually spread across domain boundaries
@@ -349,19 +352,49 @@ class FOFAnalyzer(object):
         gr_map_inv = {v:k for (k,v) in group_merge_map.iteritems()}
         gr_map_inv_b = sc.broadcast(gr_map_inv)
 
+        def count_groups_partition(particle_arrays, gr_map_inv_b, nMinMembers): 
+            p_arr = np.concatenate(list(particle_arrays))
+            del(particle_arrays)
+            gs, counts = np.unique(p_arr['iGroup'], return_counts=True)
+            del(p_arr)
+            gc.collect()
+            gr_map_inv = gr_map_inv_b.value
+            return ((g,cnt) for g,cnt in izip(gs,counts) if (g in gr_map_inv) or (cnt >= nMinMembers))
+
+        def count_groups(p):
+            gs, counts = np.unique(p['iGroup'], return_counts=True)
+            return ((g,cnt) for g,cnt in izip(gs,counts))
+
+        def relabel_groups_wrapper(p_arr, groups_map): 
+            relabel_groups(p_arr, groups_map)
+            return p_arr            
+
         # first, get rid of ghost particles
         no_ghosts_rdd = merged_rdd.map(lambda p: p[np.where(p['is_ghost'] != GHOST_PARTICLE_COPY)[0]])
 
         # count up the number of particles in each group in each partition
-        group_counts = no_ghosts_rdd.mapPartitions(lambda p_arrs: count_groups_partition(p_arrs, gr_map_inv_b, nMinMembers))
+        #group_counts = no_ghosts_rdd.mapPartitions(lambda p_arrs: count_groups_partition(p_arrs, gr_map_inv_b, nMinMembers)).cache()
+        #print 'group_counts RDD: ', group_counts
+        # group_counts = (no_ghosts_rdd.flatMap(count_groups)
+        #                              .reduceByKey(lambda a,b: a+b, nPartitions)
+        #                              .filter(lambda (gid,count): count >= nMinMembers))
 
         # merge the groups that reside in multiple domains
-        merge_group_counts = (group_counts.filter(lambda (g,cnt): g in gr_map_inv_b.value)
-                                          .reduceByKey(lambda a,b: a+b, nPartitions)
-                                          .filter(lambda (g,cnt): cnt>=nMinMembers))
+        #merge_group_counts = (group_counts.filter(lambda (g,cnt): g in gr_map_inv_b.value)
+                                          # .reduceByKey(lambda a,b: a+b, nPartitions)
+                                          # .filter(lambda (g,cnt): cnt>=nMinMembers)).cache()
+
+        #print 'merge_group_counts RDD: ', merge_group_counts
+        #sys.stdout.flush()
+
+        # use a DF to get the group counts
+        group_counts = no_ghosts_rdd.flatMap(count_groups)
+        gc_df = sqc.createDataFrame(group_counts.map(lambda (gid,count): Row(gid=int(gid),count=int(count))))
+        total_group_counts = gc_df.groupBy('gid').sum().filter('sum(count) >= %d'%nMinMembers).select('gid', 'sum(count)').collect()
 
         # combine the group counts
-        total_group_counts = (group_counts.filter(lambda (gid,cnt): gid not in gr_map_inv_b.value) + merge_group_counts).collect()
+        #total_group_counts = (group_counts.filter(lambda (gid,cnt): gid not in gr_map_inv_b.value) + merge_group_counts).collect()
+ #       total_group_counts = group_counts.collect()
         self.total_group_counts = total_group_counts
         
         # get the final group mapping by sorting groups by particle count
@@ -555,7 +588,7 @@ class LCFOFAnalyzer(FOFAnalyzer):
         self.nPartitions = nfiles
 
         print 'Number of input files: ', nfiles
-
+        
         # set up the map from x,y,z to partition id        
         ids = map(lambda x: tuple(map(int, get_block_ids.findall(x)[0])), files)
         ids_map = {x:i for i,x in enumerate(ids)}
@@ -566,7 +599,7 @@ class LCFOFAnalyzer(FOFAnalyzer):
         # get particle counts per partition
         nparts = {i:_get_nparts(filename,62500,pdt_lc.itemsize) for i,filename in enumerate(files)}
 
-        print 'Total number of particles: ', np.array(nparts.values).sum()
+        print 'Total number of particles: ', np.array(nparts.values()).sum()
 
         partition_counts = sc.broadcast(nparts)
 
