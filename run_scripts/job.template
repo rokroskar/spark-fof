@@ -1,0 +1,15 @@
+#!/bin/sh
+#BSUB -J {jobname}
+#BSUB -W {walltime} # runtime to request
+#BSUB -o {jobname}-%J.log # output extra o means overwrite
+#BSUB -n {ncores} # requesting ncores cores
+#BSUB -R "rusage[mem={memory}, scratch=10000] span[hosts=-1]" # take any available core with mem MB of memory
+
+# setup the spark paths
+export SPARK_HOME={spark_home}
+export SPARK_LOCAL_DIRS=$__LSF_JOB_TMPDIR__
+export LOCAL_DIRS=$SPARK_LOCAL_DIRS
+export SPARK_WORKER_DIR=$__LSF_JOB_TMPDIR__/work
+#export SPARK_CONF_DIR=/cluster/home/roskarr/Projects/spark-fof/conf
+
+sparkcluster launch --memory {memory}M
