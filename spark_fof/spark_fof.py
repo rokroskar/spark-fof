@@ -26,6 +26,7 @@ from spark_fof_c import  remap_gid_partition_cython, \
                          ghost_mask, \
                          partition_ghosts, \
                          partition_array, \
+                         count_groups_partition_cython, \
                          pdt       
 from . import fof
 from domain import setup_domain
@@ -373,28 +374,20 @@ class FOFAnalyzer(object):
         no_ghosts_rdd = merged_rdd.map(lambda p: p[np.where(p['is_ghost'] != GHOST_PARTICLE_COPY)[0]])
 
         # count up the number of particles in each group in each partition
-        #group_counts = no_ghosts_rdd.mapPartitions(lambda p_arrs: count_groups_partition(p_arrs, gr_map_inv_b, nMinMembers)).cache()
-        #print 'group_counts RDD: ', group_counts
-        # group_counts = (no_ghosts_rdd.flatMap(count_groups)
-        #                              .reduceByKey(lambda a,b: a+b, nPartitions)
-        #                              .filter(lambda (gid,count): count >= nMinMembers))
-
+        group_counts = no_ghosts_rdd.mapPartitions(lambda p_arrs: count_groups_partition_cython(p_arrs, gr_map_inv_b, nMinMembers)).cache()
+        
         # merge the groups that reside in multiple domains
-        #merge_group_counts = (group_counts.filter(lambda (g,cnt): g in gr_map_inv_b.value)
-                                          # .reduceByKey(lambda a,b: a+b, nPartitions)
-                                          # .filter(lambda (g,cnt): cnt>=nMinMembers)).cache()
-
-        #print 'merge_group_counts RDD: ', merge_group_counts
-        #sys.stdout.flush()
+        merge_group_counts = (group_counts.filter(lambda (g,cnt): g in gr_map_inv_b.value)
+                                          .reduceByKey(lambda a,b: a+b, nPartitions)
+                                          .filter(lambda (g,cnt): cnt>=nMinMembers)).cache()
 
         # use a DF to get the group counts
-        group_counts = no_ghosts_rdd.flatMap(count_groups)
-        gc_df = sqc.createDataFrame(group_counts.map(lambda (gid,count): Row(gid=int(gid),count=int(count))))
-        total_group_counts = gc_df.groupBy('gid').sum().filter('sum(count) >= %d'%nMinMembers).select('gid', 'sum(count)').collect()
+#        group_counts = no_ghosts_rdd.flatMap(count_groups)
+ #       gc_df = sqc.createDataFrame(group_counts.map(lambda (gid,count): Row(gid=int(gid),count=int(count))))
+  #      total_group_counts = gc_df.groupBy('gid').sum().filter('sum(count) >= %d'%nMinMembers).select('gid', 'sum(count)').collect()
 
         # combine the group counts
-        #total_group_counts = (group_counts.filter(lambda (gid,cnt): gid not in gr_map_inv_b.value) + merge_group_counts).collect()
- #       total_group_counts = group_counts.collect()
+        total_group_counts = (group_counts.filter(lambda (gid,cnt): gid not in gr_map_inv_b.value) + merge_group_counts).collect()
         self.total_group_counts = total_group_counts
         
         # get the final group mapping by sorting groups by particle count

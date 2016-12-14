@@ -107,6 +107,29 @@ def count_groups_cython(Particle [:] p_arr):
     for i in range(gc_mv.shape[0]):
         yield (gc_mv[i], counts_mv[i])
 
+
+@cython.boundscheck(False)
+def count_groups_partition_cython(particle_arrays, gr_map_inv_b, nMinMembers): 
+    from collections import defaultdict
+    cdef int i
+    cdef long [:] gs_mv
+    cdef long [:] counts_mv
+
+    global_counts = defaultdict(int)
+    
+    for p_arr in particle_arrays: 
+        gs, counts = np.unique(p_arr['iGroup'], return_counts=True)
+        gs_mv = gs
+        counts_mv = counts
+        
+        for i in range(gs_mv.shape[0]):
+            global_counts[gs_mv[i]] += counts_mv[i]
+    
+        del(gs)
+        del(counts)
+    return ((g,cnt) for (g,cnt) in global_counts.iteritems() if (g in gr_map_inv_b.value) or (cnt >= nMinMembers))
+
+
 @cython.boundscheck(False)
 cdef long count_ghosts(Particle [:] p_arr) nogil: 
     """Return the number of ghost particles in the array"""
