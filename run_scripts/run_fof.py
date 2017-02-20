@@ -1,10 +1,9 @@
 #!/bin/env python
 #BSUB -J spark-fof-driver
-#BSUB -W 4:00 
+#BSUB -W 24:00 
 #BSUB -o spark-fof-driver-%J.log
-#BSUB -n 1 
-#BSUB -R light 
-#BSUB -R rusage[mem=8000]
+#BSUB -n 1
+#BSUB -R rusage[mem=16000]
 
 import os
 os.environ['SPARK_HOME'] = os.path.join(os.path.expanduser('~'), 'spark')
@@ -35,19 +34,22 @@ dom_mins = np.array([global_min]*3, dtype=np.float64)
 tau = 0.2/12600 # 0.2 times mean interparticle separation
 buffer_tau = diff*5./150.
 
-ncores = 49
+ncores = 9
 minblock = 30
-maxblock = 37
+maxblock = 39
 
 # submit sparkjob
-sj = sparkhpc.sparkjob.LSFSparkJob(ncores=ncores,memory=8000,walltime='4:00', template='./job.template')
+sj = sparkhpc.sparkjob.LSFSparkJob(ncores=ncores,memory=8000,walltime='24:00', template='./job.template')
 sj.wait_to_start()
 
 # wait for the job to get set up
 time.sleep(30)
 
 # initialize sparkContext
-sc = sparkhpc.start_spark(master=sj.master_url, spark_conf='../conf', profiling=False, executor_memory='2000M')
+sc = sparkhpc.start_spark(master=sj.master_url, spark_conf='../conf', 
+                          profiling=False, executor_memory='2000M', graphframes_package='graphframes:graphframes:0.3.0-spark2.0-s_2.11')
+
+sc.setCheckpointDir('file:///cluster/home/roskarr/work/euclid')
 
 timeout = 300
 timein = time.time()
@@ -76,7 +78,29 @@ print 'spark-fof finished at {t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'.format(
 print 'Number of groups: %d'%ngroups
 print 'cores: %d\tblocks: %d\ttime elapsed: %f'%(ncores, (maxblock-minblock)**3, time.time()-timein)
 
+
+print 'Printing memory info'
+def get_executor_data(x):
+    tempdir = os.path.join(os.environ['__LSF_JOB_TMPDIR__'],'work')
+    found = False
+    lines = []
+    for dirname, subdirlist, filelist in os.walk(tempdir):
+        for filename in filelist:
+            if filename == 'stderr':
+                found = True
+                print 'found log file'
+                with open(os.path.join(dirname,filename),'r') as f:
+                    for line in f.readlines():
+                        if line.startswith('spark_fof:'):
+                            lines.append(line)
+                            print line
+    if not found:
+        lines = ['stderr file not found',]
+    return lines
+
+for i, res in enumerate(sc.parallelize(range(ncores)).flatMap(get_executor_data).collect()):
+    print res
+
+print 'Printing memory info done'
 sc.stop()
 sj.stop()
-
-

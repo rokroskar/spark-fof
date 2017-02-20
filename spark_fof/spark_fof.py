@@ -217,10 +217,10 @@ class FOFAnalyzer(object):
             if len(part_arr)>0:
                 tin = time.time()
                 t = time.localtime()
-                print 'running local fof on {part} started at {t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'.format(part=partition_index,t=t)
+                print 'spark_fof: running local fof on {part} started at {t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'.format(part=partition_index,t=t)
                 # run fof
                 fof.run(part_arr, tau, nMinMembers)
-                print 'fof on {part} finished in {seconds}'.format(part=partition_index, seconds=time.time()-tin)
+                print 'spark_fof: fof on {part} finished in {seconds}'.format(part=partition_index, seconds=time.time()-tin)
 
                 # encode the groupID  
                 spark_fof_c.encode_gid(part_arr, partition_index)
@@ -266,10 +266,12 @@ class FOFAnalyzer(object):
  
 
     def _get_level_map(self):
-        """Produce a group re-mapping across sub-domains. Connected groups are obtained by finding
+        """
+        Produce a group re-mapping across sub-domains. Connected groups are obtained by finding
         groups belonging to the same particles and linking them into a graph. Each node in a 
         connected sub-graph is mapped to the lowest group ID in the sub-graph. 
         """
+        
         # get the initial group mapping across sub-domains just based on
         # particle IDs
         groups_map = self._get_gid_map()
@@ -285,6 +287,7 @@ class FOFAnalyzer(object):
                                              .map(lambda v: Row(id=int(v))))
         e_df = sqc.createDataFrame(groups_map.map(lambda (s,d): Row(src=int(s), dst=int(d))))
 
+        # persist the graph, allowing it to spill to disk if necessary
         g_graph = graphframes.GraphFrame(v_df, e_df).persist(StorageLevel.MEMORY_AND_DISK_SER)
         
         # generate mapping
@@ -305,7 +308,7 @@ class FOFAnalyzer(object):
                           .flatMap(make_mapping)
                           .collectAsMap())
 
-        print 'domain group mapping build took %f seconds'%(time.time()-timein)
+        print 'spark_fof: domain group mapping build took %f seconds'%(time.time()-timein)
         return mapping
 
 
@@ -381,11 +384,6 @@ class FOFAnalyzer(object):
                                           .reduceByKey(lambda a,b: a+b, nPartitions)
                                           .filter(lambda (g,cnt): cnt>=nMinMembers)).cache()
 
-        # use a DF to get the group counts
-#        group_counts = no_ghosts_rdd.flatMap(count_groups)
- #       gc_df = sqc.createDataFrame(group_counts.map(lambda (gid,count): Row(gid=int(gid),count=int(count))))
-  #      total_group_counts = gc_df.groupBy('gid').sum().filter('sum(count) >= %d'%nMinMembers).select('gid', 'sum(count)').collect()
-
         # combine the group counts
         total_group_counts = (group_counts.filter(lambda (gid,cnt): gid not in gr_map_inv_b.value) + merge_group_counts).collect()
         self.total_group_counts = total_group_counts
@@ -398,7 +396,7 @@ class FOFAnalyzer(object):
             groups_map[g] = i+1
             self._groups[i] = c
 
-        print 'Final group map build took %f seconds'%(time.time() - timein)
+        print 'spark_fof: Final group map build took %f seconds'%(time.time() - timein)
         groups_map_b = sc.broadcast(groups_map)
 
         final_fof_rdd = no_ghosts_rdd.map(lambda p_arr: relabel_groups_wrapper(p_arr, groups_map_b.value))
@@ -561,7 +559,7 @@ class LCFOFAnalyzer(FOFAnalyzer):
                             new_arr['pos'] = p_arr['pos']
                             yield new_arr
                         else: 
-                            print 'reading %s took %d seconds in partition %d'%(filename, time.time()-timein, index)
+                            print 'spark_fof: reading %s took %d seconds in partition %d'%(filename, time.time()-timein, index)
                             break
         
         # determine which files to read
@@ -580,7 +578,7 @@ class LCFOFAnalyzer(FOFAnalyzer):
         nfiles = len(files) 
         self.nPartitions = nfiles
 
-        print 'Number of input files: ', nfiles
+        print 'spark_fof: Number of input files: ', nfiles
         
         # set up the map from x,y,z to partition id        
         ids = map(lambda x: tuple(map(int, get_block_ids.findall(x)[0])), files)
@@ -592,7 +590,7 @@ class LCFOFAnalyzer(FOFAnalyzer):
         # get particle counts per partition
         nparts = {i:_get_nparts(filename,62500,pdt_lc.itemsize) for i,filename in enumerate(files)}
 
-        print 'Total number of particles: ', np.array(nparts.values()).sum()
+        print 'spark_fof: Total number of particles: ', np.array(nparts.values()).sum()
 
         partition_counts = sc.broadcast(nparts)
 

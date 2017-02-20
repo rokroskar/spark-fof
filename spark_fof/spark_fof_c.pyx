@@ -111,6 +111,9 @@ def count_groups_cython(Particle [:] p_arr):
 @cython.boundscheck(False)
 def count_groups_partition_cython(particle_arrays, gr_map_inv_b, nMinMembers): 
     from collections import defaultdict
+    from pympler.asizeof import asizeof
+    import gc
+
     cdef int i
     cdef long [:] gs_mv
     cdef long [:] counts_mv
@@ -121,12 +124,16 @@ def count_groups_partition_cython(particle_arrays, gr_map_inv_b, nMinMembers):
         gs, counts = np.unique(p_arr['iGroup'], return_counts=True)
         gs_mv = gs
         counts_mv = counts
-        
+                
         for i in range(gs_mv.shape[0]):
             global_counts[gs_mv[i]] += counts_mv[i]
-    
+        
         del(gs)
         del(counts)
+        del(p_arr)
+        print gc.collect()
+        print 'memory used by python objects: ', asizeof(global_counts)
+
     return ((g,cnt) for (g,cnt) in global_counts.iteritems() if (g in gr_map_inv_b.value) or (cnt >= nMinMembers))
 
 
@@ -144,6 +151,12 @@ cdef long count_ghosts(Particle [:] p_arr) nogil:
 def partition_array(Particle[:] p_arr, int N, float tau, int symmetric,
                     double[:] dom_mins, 
                     double[:] dom_maxs):
+    """
+    Split a particle array into tuples of (group_id, array).
+    This can be used to repartition the data in order to get all particles
+    for a given group ID on the same partition. 
+    """
+    
     cdef unsigned int i 
     cdef long right_ind, left_ind
     

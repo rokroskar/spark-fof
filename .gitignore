@@ -6,3 +6,4 @@ build
 spark_fof_c.c
 fof/libkd.a
 fof/fof.c
+*.log
