@@ -1,7 +1,7 @@
 #!/bin/env python
 #BSUB -J spark-fof-driver
-#BSUB -W 24:00 
-#BSUB -o spark-fof-driver-%J.log
+#BSUB -W 02:00 
+#BSUB -o logs/spark-fof-driver-%J.log
 #BSUB -n 1
 #BSUB -R rusage[mem=16000]
 
@@ -34,12 +34,12 @@ dom_mins = np.array([global_min]*3, dtype=np.float64)
 tau = 0.2/12600 # 0.2 times mean interparticle separation
 buffer_tau = diff*5./150.
 
-ncores = 9
+ncores = 8
 minblock = 30
-maxblock = 39
+maxblock = 32
 
 # submit sparkjob
-sj = sparkhpc.sparkjob.LSFSparkJob(ncores=ncores,memory=8000,walltime='24:00', template='./job.template')
+sj = sparkhpc.sparkjob.LSFSparkJob(ncores=ncores,memory=8000,walltime='02:00', template='./job.template')
 sj.wait_to_start()
 
 # wait for the job to get set up
@@ -69,7 +69,9 @@ print '--------------------'
 print 'Starting spark-fof at {t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'.format(t=t)
 print '--------------------'
 
-fof_analyzer = spark_fof.spark_fof.LCFOFAnalyzer(sc, path, 64, 62, tau, dom_mins, dom_maxs, blockids=range(minblock,maxblock), buffer_tau=tau*2)
+nMinMembers = 8
+nBins = 62
+fof_analyzer = spark_fof.spark_fof.LCFOFAnalyzer(sc, path, nMinMembers, nBins, tau, dom_mins, dom_maxs, blockids=range(minblock,maxblock), buffer_tau=tau*2)
 ngroups = len(fof_analyzer.groups)
 
 t = time.localtime()
@@ -91,7 +93,7 @@ def get_executor_data(x):
                 print 'found log file'
                 with open(os.path.join(dirname,filename),'r') as f:
                     for line in f.readlines():
-                        if line.startswith('spark_fof:'):
+                        if line.startswith('spark_fof'):
                             lines.append(line)
                             print line
     if not found:
