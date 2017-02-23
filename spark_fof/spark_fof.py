@@ -8,6 +8,7 @@ import re
 import time
 import os
 import gc 
+import warnings
 
 # initialize spark to load spark classes
 import findspark
@@ -16,7 +17,10 @@ import pyspark
 from pyspark.accumulators import AccumulatorParam
 from pyspark.sql import SQLContext, Row
 from pyspark.storagelevel import StorageLevel 
-import graphframes
+try: 
+    import graphframes
+except ImportError: 
+    warnings.warn('graphframes not loaded')
 from . import spark_tipsy
 
 # local imports
@@ -219,12 +223,23 @@ class FOFAnalyzer(object):
                 t = time.localtime()
                 print 'spark_fof: running local fof on {part} started at {t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'.format(part=partition_index,t=t)
                 # run fof
+                tin = time.time()
+                part_arr.sort(order='iOrder')
+                print 'sorting took %f seconds'%(time.time()-tin)
+                
                 fof.run(part_arr, tau, nMinMembers)
                 print 'spark_fof: fof on {part} finished in {seconds}'.format(part=partition_index, seconds=time.time()-tin)
 
+                print 'particles in partition %d: %d'%(partition_index, len(part_arr))
+                for i in range(100): 
+                    print 'spark_fof DEBUG: %d %d'%(part_arr['iOrder'][i], part_arr['iGroup'][i])
+
                 # encode the groupID  
                 spark_fof_c.encode_gid(part_arr, partition_index)
-        
+                print 'spark_fof DEBUG: total number of groups in partition %d: %d'%(partition_index, len(np.unique(part_arr['iGroup'])))
+                
+               
+
             for arr in np.split(part_arr, range(batch_size,len(part_arr),batch_size)):
                 yield arr
 
@@ -280,6 +295,8 @@ class FOFAnalyzer(object):
 
         sqc = SQLContext(sc)
 
+        print 'spark_fof DEBUG: groups in initial mapping = %d'%groups_map.cache().count()
+
         
         # create the spark GraphFrame with group IDs as nodes and group connections as edges
         v_df = sqc.createDataFrame(groups_map.flatMap(lambda x: x)
@@ -308,7 +325,12 @@ class FOFAnalyzer(object):
                           .flatMap(make_mapping)
                           .collectAsMap())
 
-        print 'spark_fof: domain group mapping build took %f seconds'%(time.time()-timein)
+        print 'spark_fof DEBUG: groups in final mapping = %d'%len(mapping)
+        # from pickle import dump
+        # with open('mapping2.dump', 'w') as f: 
+        #     dump(mapping, f, -1)
+
+        print 'spark_fof <timing>: domain group mapping build took %f seconds'%(time.time()-timein)
         return mapping
 
 
@@ -384,6 +406,8 @@ class FOFAnalyzer(object):
                                           .reduceByKey(lambda a,b: a+b, nPartitions)
                                           .filter(lambda (g,cnt): cnt>=nMinMembers)).cache()
 
+        print 'spark_fof DEBUG: non-merge groups = %d merge groups = %d'%(group_counts.count(), merge_group_counts.count())        
+
         # combine the group counts
         total_group_counts = (group_counts.filter(lambda (gid,cnt): gid not in gr_map_inv_b.value) + merge_group_counts).collect()
         self.total_group_counts = total_group_counts
@@ -400,6 +424,13 @@ class FOFAnalyzer(object):
         groups_map_b = sc.broadcast(groups_map)
 
         final_fof_rdd = no_ghosts_rdd.map(lambda p_arr: relabel_groups_wrapper(p_arr, groups_map_b.value))
+
+        def output_particles(i,iterator): 
+            p_arr = np.concatenate(list(iterator))
+            np.save('/cluster/home/roskarr/Projects/spark-fof/debug_data/final_parr%d'%i, p_arr)
+            yield True
+
+        final_fof_rdd.mapPartitionsWithIndex(output_particles).count()
 
         return final_fof_rdd
 
@@ -473,6 +504,13 @@ class TipsyFOFAnalyzer(FOFAnalyzer):
 
 
 class LCFOFAnalyzer(FOFAnalyzer):
+    """
+    An extension of the FOFAnalyzer class designed specifically for the "light-cone" output. 
+
+    This is using the light-cone data divided into a 62^3 grid (actually 64^3, but outer 
+    edges are cut off). 
+    """
+
     # these set up the grid 
     # diff is the width of each grid cell 
     diff = np.float32(0.033068776)
@@ -497,7 +535,7 @@ class LCFOFAnalyzer(FOFAnalyzer):
 
     @property
     def global_to_local_map(self):
-        # function to map from file block numbers to domain bin
+        """Function to map from file block numbers to domain bin"""
         Ngrid = 62
         map_file_to_domain = lambda (x,y,z): (x-1) + (y-1)*Ngrid + (z-1)*Ngrid*Ngrid
 
