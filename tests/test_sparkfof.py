@@ -98,7 +98,7 @@ def sc():
 
     os.environ['SPARK_DRIVER_MEMORY'] = '8G'
     sc = sparkhpc.start_spark(master="local[2]")
-
+    sc.setCheckpointDir('file:///cluster/home/roskarr/work/euclid')
     yield sc
 
     sc.stop()
