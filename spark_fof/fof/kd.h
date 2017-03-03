@@ -27,7 +27,7 @@ typedef struct Particle {
 	float v[3];
 #endif
     int32_t is_ghost;
-	int32_t iOrder;
+	int64_t iOrder;
     int64_t iGroup;
 	} PARTICLE;
 

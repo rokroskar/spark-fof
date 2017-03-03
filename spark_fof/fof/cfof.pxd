@@ -7,7 +7,7 @@ cdef extern from "kd.h":
     cdef struct Particle:
         float r[3]
         int is_ghost
-        int iOrder
+        long iOrder
         long iGroup
     ctypedef Particle PARTICLE
 

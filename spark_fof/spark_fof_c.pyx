@@ -20,7 +20,7 @@ ctypedef np.float_t DTYPE_f
 ctypedef np.float32_t DTYPE_f32
 ctypedef np.int_t DTYPE_i
 
-pdt = np.dtype([('pos', 'f4', 3), ('is_ghost', 'i4'), ('iOrder', 'i4'), ('iGroup', 'i8')], align=True)
+pdt = np.dtype([('pos', 'f4', 3), ('is_ghost', 'i4'), ('iOrder', 'i8'), ('iGroup', 'i8')], align=True)
 
 cdef unsigned int PRIMARY_GHOST_PARTICLE = 1
 cdef unsigned int GHOST_PARTICLE_COPY = 2 
@@ -240,11 +240,12 @@ def partition_ghosts(Particle[:] p_arr, int N, float tau, int symmetric,
                         ghost_particle.is_ghost = GHOST_PARTICLE_COPY
                         ghosts[ghost_ind] = ghost_particle
                         ghost_ind+=1
-                                                      
+                                                          
     all_ps = np.asarray(ghosts)[np.nonzero(ghosts)[0]]
 
     all_ps.sort(order='iGroup')
     partitions = np.unique(all_ps['iGroup'])
+    print 'partitions: ', partitions
 
     left_ind = 0
     res = []
