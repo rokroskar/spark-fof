@@ -120,21 +120,22 @@ def count_groups_partition_cython(particle_arrays, gr_map_inv_b, nMinMembers):
 
     global_counts = defaultdict(int)
     
-    for p_arr in particle_arrays: 
-        gs, counts = np.unique(p_arr['iGroup'], return_counts=True)
-        gs_mv = gs
-        counts_mv = counts
+    # for p_arr in particle_arrays: 
+    #     gs, counts = np.unique(p_arr['iGroup'], return_counts=True)
+    #     gs_mv = gs
+    #     counts_mv = counts
                 
-        for i in range(gs_mv.shape[0]):
-            global_counts[gs_mv[i]] += counts_mv[i]
+    #     for i in range(gs_mv.shape[0]):
+    #         global_counts[gs_mv[i]] += counts_mv[i]
         
-        del(gs)
-        del(counts)
-        del(p_arr)
-        print gc.collect()
-        print 'memory used by python objects: ', asizeof(global_counts)
-
-    return ((g,cnt) for (g,cnt) in global_counts.iteritems() if (g in gr_map_inv_b.value) or (cnt >= nMinMembers))
+    #     del(gs)
+    #     del(counts)
+    #     del(p_arr)
+    #     print gc.collect()
+    #     print 'number of stored groups: %d\tmemory used by dict: %d'%(len(global_counts), asizeof(global_counts))
+    p_arr = np.concatenate(list(particle_arrays))
+    gids, counts = np.unique(p_arr['iGroup'], return_counts=True)
+    return ((g,cnt) for (g,cnt) in zip(gids,counts) if (g in gr_map_inv_b.value) or (cnt >= nMinMembers))
 
 
 @cython.boundscheck(False)
@@ -245,7 +246,7 @@ def partition_ghosts(Particle[:] p_arr, int N, float tau, int symmetric,
 
     all_ps.sort(order='iGroup')
     partitions = np.unique(all_ps['iGroup'])
-    print 'partitions: ', partitions
+   # print 'partitions: ', partitions
 
     left_ind = 0
     res = []

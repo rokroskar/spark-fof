@@ -44,7 +44,7 @@ def partition_helper(pid):
 class FOFAnalyzer(object):
     def __init__(self, sc, particles, nMinMembers, nBins, tau, 
                  dom_mins=[-.5,-.5,-.5], dom_maxs=[.5,.5,.5], 
-                 nPartitions=None, buffer_tau = None, symmetric=False, **kwargs):
+                 nPartitions=None, buffer_tau = None, symmetric=False, DEBUG=False, **kwargs):
         self.sc = sc
         self.nBins = nBins
         self.tau = tau
@@ -52,9 +52,11 @@ class FOFAnalyzer(object):
         self.dom_maxs = dom_maxs
         self.nMinMembers = nMinMembers
         self.symmetric = symmetric
+        self.DEBUG = DEBUG
 
         if buffer_tau is None: 
-            buffer_tau = tau
+            buffer_tau = 2*tau
+            self.buffer_tau = buffer_tau
 
         domain_containers = setup_domain(nBins, buffer_tau, dom_mins, dom_maxs) 
         self.domain_containers = domain_containers
@@ -175,10 +177,10 @@ class FOFAnalyzer(object):
             repartitioning - see `spark_fof.spark_fof_c.partition_ghosts`
         """ 
 
-        N, tau, dom_mins, dom_maxs, symmetric = self.N, self.tau, self.dom_mins, self.dom_maxs, self.symmetric
+        N, buffer_tau, dom_mins, dom_maxs, symmetric = self.N, self.buffer_tau, self.dom_mins, self.dom_maxs, self.symmetric
         def partition_helper(iterator):
             for arr in iterator: 
-                res = function(arr,N,tau,symmetric,dom_mins,dom_maxs)
+                res = function(arr,N,buffer_tau,symmetric,dom_mins,dom_maxs)
                 for r in res: 
                     yield r
         return rdd.mapPartitions(partition_helper)
@@ -215,28 +217,29 @@ class FOFAnalyzer(object):
         """
         tau = self.tau
 
-        def run_local_fof(partition_index, particle_iter, tau, nMinMembers, batch_size=1024*10240): 
+        def run_local_fof(partition_index, particle_iter, tau, nMinMembers, batch_size=1024*10240, DEBUG=False): 
             """Helper function to run FOF locally on the individual partitions"""
-            part_arr = np.hstack(particle_iter)
+            part_arr = np.concatenate(list(particle_iter))
             if len(part_arr)>0:
                 tin = time.time()
                 t = time.localtime()
                 print 'spark_fof: running local fof on {part} started at {t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'.format(part=partition_index,t=t)
                 # run fof
                 tin = time.time()
-                part_arr.sort(order='iOrder')
+                part_arr.sort(kind='mergesort', order='iOrder')
                 print 'sorting took %f seconds'%(time.time()-tin)
                 
                 fof.run(part_arr, tau, nMinMembers)
                 print 'spark_fof: fof on {part} finished in {seconds}'.format(part=partition_index, seconds=time.time()-tin)
 
                 print 'particles in partition %d: %d'%(partition_index, len(part_arr))
-                for i in range(100): 
-                    print 'spark_fof DEBUG: %d %d'%(part_arr['iOrder'][i], part_arr['iGroup'][i])
+                if DEBUG:
+                    for i in range(100): 
+                        print 'spark_fof DEBUG: %d %d'%(part_arr['iOrder'][i], part_arr['iGroup'][i])
 
                 # encode the groupID  
                 spark_fof_c.encode_gid(part_arr, partition_index)
-                print 'spark_fof DEBUG: total number of groups in partition %d: %d'%(partition_index, len(np.unique(part_arr['iGroup'])))
+                if DEBUG: print 'spark_fof DEBUG: total number of groups in partition %d: %d'%(partition_index, len(np.unique(part_arr['iGroup'])))
                 
                
 
@@ -295,7 +298,8 @@ class FOFAnalyzer(object):
 
         sqc = SQLContext(sc)
 
-        print 'spark_fof DEBUG: groups in initial mapping = %d'%groups_map.cache().count()
+        if self.DEBUG: 
+            print 'spark_fof DEBUG: groups in initial mapping = %d'%groups_map.cache().count()
 
         
         # create the spark GraphFrame with group IDs as nodes and group connections as edges
@@ -325,10 +329,11 @@ class FOFAnalyzer(object):
                           .flatMap(make_mapping)
                           .collectAsMap())
 
-        print 'spark_fof DEBUG: groups in final mapping = %d'%len(mapping)
-        # from pickle import dump
-        # with open('mapping2.dump', 'w') as f: 
-        #     dump(mapping, f, -1)
+        if self.DEBUG:
+            print 'spark_fof DEBUG: groups in final mapping = %d'%len(mapping)
+            # from pickle import dump
+            # with open('mapping2.dump', 'w') as f: 
+            #     dump(mapping, f, -1)
 
         print 'spark_fof <timing>: domain group mapping build took %f seconds'%(time.time()-timein)
         return mapping
@@ -406,7 +411,8 @@ class FOFAnalyzer(object):
                                           .reduceByKey(lambda a,b: a+b, nPartitions)
                                           .filter(lambda (g,cnt): cnt>=nMinMembers)).cache()
 
-        print 'spark_fof DEBUG: non-merge groups = %d merge groups = %d'%(group_counts.count(), merge_group_counts.count())        
+        if self.DEBUG:
+            print 'spark_fof DEBUG: non-merge groups = %d merge groups = %d'%(group_counts.count(), merge_group_counts.count())        
 
         # combine the group counts
         total_group_counts = (group_counts.filter(lambda (gid,cnt): gid not in gr_map_inv_b.value) + merge_group_counts).collect()
@@ -425,12 +431,12 @@ class FOFAnalyzer(object):
 
         final_fof_rdd = no_ghosts_rdd.map(lambda p_arr: relabel_groups_wrapper(p_arr, groups_map_b.value))
 
-        def output_particles(i,iterator): 
-            p_arr = np.concatenate(list(iterator))
-            np.save('/cluster/home/roskarr/Projects/spark-fof/debug_data/final_parr%d'%i, p_arr)
-            yield True
+        # def output_particles(i,iterator): 
+        #     p_arr = np.concatenate(list(iterator))
+        #     np.save('/cluster/home/roskarr/Projects/spark-fof/debug_data/final_parr%d'%i, p_arr)
+        #     yield True
 
-        final_fof_rdd.mapPartitionsWithIndex(output_particles).count()
+        # final_fof_rdd.mapPartitionsWithIndex(output_particles).count()
 
         return final_fof_rdd
 
@@ -641,36 +647,45 @@ class LCFOFAnalyzer(FOFAnalyzer):
       
         return rec_rdd
 
-        def partition_particles(self): 
-            """
-            Partitions the particles for running local FOF
-            """
+    def partition_particles(self): 
+        """
+        Partitions the particles for running local FOF
+        """
 
-            nPartitions = self.nPartitions
-            N, tau, dom_mins, dom_maxs = self.N, self.tau, self.dom_mins, self.dom_maxs
+        nPartitions = self.nPartitions
+        N, tau, dom_mins, dom_maxs = self.N, self.tau, self.dom_mins, self.dom_maxs
 
-            # mark the ghosts
-            self.particle_rdd = self._set_ghost_mask(self.particle_rdd)
-            
-            gl_to_loc_map = self.global_to_local_map
-            gl_to_loc_map_b = self.sc.broadcast(gl_to_loc_map)
-
-            def remap_partition(particles):
-                """Helper function to remap groups"""
-                remap_gid_partition_cython(particles, gl_to_loc_map_b.value)
-                return particles
-
-            ghosts_rdd = (self._partition_rdd(self.particle_rdd, partition_ghosts)
-                              .filter(lambda (k,v): k in gl_to_loc_map_b.value)
-                              .map(lambda (k,v): (gl_to_loc_map_b.value[k],v))
-                              .partitionBy(nPartitions)
-                              .map(lambda (k,v): remap_partition(v), preservesPartitioning=True))
+        # mark the ghosts
+        self.particle_rdd = self._set_ghost_mask(self.particle_rdd)
         
-            part_rdd = self.particle_rdd
-            partitioned_rdd = ghosts_rdd + part_rdd
-            self._partitioned_rdd = partitioned_rdd
+        gl_to_loc_map = self.global_to_local_map
+        gl_to_loc_map_b = self.sc.broadcast(gl_to_loc_map)
 
-            return partitioned_rdd
+        def remap_partition(particles):
+            """Helper function to remap groups"""
+            remap_gid_partition_cython(particles, gl_to_loc_map_b.value)
+            return particles
+
+        ghosts_rdd = (self._partition_rdd(self.particle_rdd, partition_ghosts)
+                          .filter(lambda (k,v): k in gl_to_loc_map_b.value)
+                          .map(lambda (k,v): (gl_to_loc_map_b.value[k],v))
+                          .partitionBy(nPartitions)
+                          .map(lambda (k,v): remap_partition(v), preservesPartitioning=True))
+    
+        part_rdd = self.particle_rdd
+
+        def filter_partition(partition_index, iterator): 
+            for arr in iterator: 
+                yield (partition_index, arr[np.where(arr['iOrder']==380603902)[0]])
+
+        print ghosts_rdd.mapPartitionsWithIndex(filter_partition).filter(lambda a: len(a)>0).collect()
+
+        partitioned_rdd = ghosts_rdd + part_rdd
+        self._partitioned_rdd = partitioned_rdd
+
+        # return ghosts_rdd, partitioned_rdd
+
+        return partitioned_rdd
 
 def _get_nparts(filename,headersize,itemsize): 
     """Helper function to get the number of particles in the file"""
