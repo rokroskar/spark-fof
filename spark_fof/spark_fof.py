@@ -424,7 +424,7 @@ class FOFAnalyzer(object):
         self._groups = {}
         for i, (g,c) in enumerate(total_group_counts): 
             groups_map[g] = i+1
-            self._groups[i] = c
+            self._groups[i+1] = c
 
         print 'spark_fof: Final group map build took %f seconds'%(time.time() - timein)
         groups_map_b = sc.broadcast(groups_map)
@@ -441,8 +441,9 @@ class FOFAnalyzer(object):
         return final_fof_rdd
 
 
-def get_bin(pos, nbins, mins, maxs):
-    return spark_fof_c.get_bin_wrapper(pos, nbins, mins, maxs)
+    def get_bin(pos):
+        nbins, mins, maxs = self.nBins, self.dom_mins, self.dom_maxs
+        return spark_fof_c.get_bin_wrapper(pos, nbins, mins, maxs)
 
 
 def pid_gid(p):
@@ -674,16 +675,8 @@ class LCFOFAnalyzer(FOFAnalyzer):
     
         part_rdd = self.particle_rdd
 
-        def filter_partition(partition_index, iterator): 
-            for arr in iterator: 
-                yield (partition_index, arr[np.where(arr['iOrder']==380603902)[0]])
-
-        print ghosts_rdd.mapPartitionsWithIndex(filter_partition).filter(lambda a: len(a)>0).collect()
-
         partitioned_rdd = ghosts_rdd + part_rdd
         self._partitioned_rdd = partitioned_rdd
-
-        # return ghosts_rdd, partitioned_rdd
 
         return partitioned_rdd
 

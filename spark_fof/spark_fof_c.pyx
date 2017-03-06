@@ -76,7 +76,7 @@ cdef inline bint in_rectangle_cython(double[3] mins, double[3] maxs, float[3] po
     cdef unsigned int i, ndim=3
 
     for i in range(ndim): 
-        res *= (mins[i] < point[i] < maxs[i])
+        res *= (mins[i] <= point[i] < maxs[i])
     return res
 
 
