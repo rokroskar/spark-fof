@@ -57,7 +57,9 @@ class FOFAnalyzer(object):
         if buffer_tau is None: 
             buffer_tau = 2*tau
             self.buffer_tau = buffer_tau
-
+        else: 
+            self.buffer_tau = buffer_tau 
+            
         domain_containers = setup_domain(nBins, buffer_tau, dom_mins, dom_maxs) 
         self.domain_containers = domain_containers
 
@@ -520,18 +522,18 @@ class LCFOFAnalyzer(FOFAnalyzer):
 
     # these set up the grid 
     # diff is the width of each grid cell 
-    diff = np.float32(0.033068776)
-    global_min = -31*diff
-    global_max = 31*diff
+    # diff = np.float32(0.033068776)
+    # global_min = -31*diff
+    # global_max = 31*diff
 
-    # domain limits
-    dom_maxs = np.array([global_max]*3, dtype=np.float64)
-    dom_mins = np.array([global_min]*3, dtype=np.float64)
+    # # domain limits
+    # dom_maxs = np.array([global_max]*3, dtype=np.float64)
+    # dom_mins = np.array([global_min]*3, dtype=np.float64)
 
     # linking length and buffer region size
     #tau = diff*5./125.
-    tau = 0.2/12600
-    buffer_tau = diff*5./150.
+    # tau = 0.2/12600
+    # buffer_tau = diff*5./150.
 
     def __init__(self, sc, path, *args, **kwargs):
         self.path = path
