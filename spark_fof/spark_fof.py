@@ -539,7 +539,7 @@ class LCFOFAnalyzer(FOFAnalyzer):
         self.path = path
         self._ids_map = None
         self._global_to_local_map = None
-
+        self._local_to_global_map = None
         super(LCFOFAnalyzer, self).__init__(sc, path, *args, **kwargs)
 
     @property
@@ -554,6 +554,16 @@ class LCFOFAnalyzer(FOFAnalyzer):
                 m[map_file_to_domain(k)] = v
             self._global_to_local_map = m
         return self._global_to_local_map
+
+
+    @property
+    def local_to_global_map(self):
+        if self._local_to_global_map is None:
+            m = {}
+            for k,v in self.global_to_local_map.iteritems():
+                m[v] = k
+            self._local_to_global_map = m
+        return self._local_to_global_map
 
 
     def read_data(self, path, **kwargs):
@@ -589,7 +599,7 @@ class LCFOFAnalyzer(FOFAnalyzer):
             start_index = sum([p_counts[i] for i in range(index)])
             for arr in iterator:
                 arr['iOrder'] = range(start_index + local_index, start_index + local_index + len(arr))
-                arr['iGroup'] = index
+                arr['iGroup'] = loc_to_glob_map_b.value[index]
                 local_index += len(arr)
                 yield arr
         
@@ -631,9 +641,11 @@ class LCFOFAnalyzer(FOFAnalyzer):
         ids = map(lambda x: tuple(map(int, get_block_ids.findall(x)[0])), files)
         ids_map = {x:i for i,x in enumerate(ids)}
         self.ids_map = ids_map
-
-        ids_map_b = sc.broadcast(ids_map)
+        loc_to_glob_map_b = self.local_to_global_map
         
+        ids_map_b = sc.broadcast(ids_map)
+        loc_to_glob_map_b = sc.broadcast(loc_to_glob_map_b)
+
         # get particle counts per partition
         nparts = {i:_get_nparts(filename,62500,pdt_lc.itemsize) for i,filename in enumerate(files)}
 
@@ -673,7 +685,7 @@ class LCFOFAnalyzer(FOFAnalyzer):
                           .filter(lambda (k,v): k in gl_to_loc_map_b.value)
                           .map(lambda (k,v): (gl_to_loc_map_b.value[k],v))
                           .partitionBy(nPartitions)
-                          .map(lambda (k,v): remap_partition(v), preservesPartitioning=True))
+                          .map(lambda (k,v): v, preservesPartitioning=True))
     
         part_rdd = self.particle_rdd
 

@@ -216,11 +216,8 @@ def partition_ghosts(Particle[:] p_arr, int N, float tau, int symmetric,
     with nogil:
         for i in range(p_arr.shape[0]):
             point = p_arr[i].r
-            my_bin = get_bin_cython(point, N, dom_mins, dom_maxs)
+            my_bin = p_arr[i].iGroup # the bin ID is stored in the iGroup field at read time
             
-            # store the bin as the groupid temporarily
-            p_arr[i].iGroup = my_bin
-          
             if p_arr[i].is_ghost:
                 ghost_particle = p_arr[i]
 
