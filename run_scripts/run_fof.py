@@ -32,7 +32,6 @@ dom_maxs = np.array([global_max]*3, dtype=np.float64)
 dom_mins = np.array([global_min]*3, dtype=np.float64)
 
 tau = 0.2/12600 # 0.2 times mean interparticle separation
-buffer_tau = diff*5./150.
 
 ncores = 8
 minblock = 30

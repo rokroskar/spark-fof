@@ -21,7 +21,6 @@ try:
     import graphframes
 except ImportError: 
     warnings.warn('graphframes not loaded')
-from . import spark_tipsy
 
 # local imports
 import spark_fof_c

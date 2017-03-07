@@ -113,26 +113,7 @@ def count_groups_partition_cython(particle_arrays, gr_map_inv_b, nMinMembers):
     from collections import defaultdict
     from pympler.asizeof import asizeof
     import gc
-
-    cdef int i
-    cdef long [:] gs_mv
-    cdef long [:] counts_mv
-
-    global_counts = defaultdict(int)
-    
-    # for p_arr in particle_arrays: 
-    #     gs, counts = np.unique(p_arr['iGroup'], return_counts=True)
-    #     gs_mv = gs
-    #     counts_mv = counts
-                
-    #     for i in range(gs_mv.shape[0]):
-    #         global_counts[gs_mv[i]] += counts_mv[i]
-        
-    #     del(gs)
-    #     del(counts)
-    #     del(p_arr)
-    #     print gc.collect()
-    #     print 'number of stored groups: %d\tmemory used by dict: %d'%(len(global_counts), asizeof(global_counts))
+  
     p_arr = np.concatenate(list(particle_arrays))
     gids, counts = np.unique(p_arr['iGroup'], return_counts=True)
     return ((g,cnt) for (g,cnt) in zip(gids,counts) if (g in gr_map_inv_b.value) or (cnt >= nMinMembers))
@@ -315,55 +296,4 @@ def relabel_groups(Particle [:] p_arr, groups_map):
             p_arr[i].iGroup = groups_map[g]
         else: 
             p_arr[i].iGroup = 0
-
-#def partition_particles_cython(particle_arrays, domain_containers, float tau, double[:] dom_mins, double[:] dom_maxs):
-#     """Copy particles in buffer areas to the partitions that will need them"""
-#     cdef int N = domain_containers[0].N
-#     cdef unsigned int n_containers = len(domain_containers)
-#     cdef unsigned int nparts, i
-#     cdef int my_bin
-#     cdef float[:] point
-   
-#     cdef double[:, :] mins = np.zeros((len(domain_containers),3))
-#     cdef double[:, :] maxs = np.zeros((len(domain_containers),3))
-#     cdef double[:, :] mins_buff = np.zeros((len(domain_containers),3))
-#     cdef double[:, :] maxs_buff = np.zeros((len(domain_containers),3))
-#     cdef double[:] min_temp 
-#     cdef double[:] max_temp 
-#     cdef double[:] min_buff_temp 
-#     cdef double[:] max_buff_temp 
-    
-#     # set up domain limits
-#     for i in range(n_containers): 
-#         d = domain_containers[i]
-#         min_temp = d.mins
-#         max_temp = d.maxes
-#         min_buff_temp = d.bufferRectangle.mins
-#         max_buff_temp = d.bufferRectangle.maxes
-#         mins[i,:] = min_temp
-#         maxs[i] = max_temp
-#         mins_buff[i] = min_buff_temp
-#         maxs_buff[i] = max_buff_temp
-
-#     for p_arr in particle_arrays:
-#         nparts = p_arr.shape[0]
-        
-#         trans = np.array([[-tau, 0, 0], [0,-tau, 0], [0, 0, -tau], [-tau, -tau, 0], [0, -tau, -tau], [-tau,-tau,-tau]], dtype=np.float32)
-
-#         for i in range(nparts):
-#             point = p_arr['pos'][i]
-#             my_bin = get_bin_cython(point, 2**N, dom_mins, dom_maxs)
-#             my_bins = set([my_bin])
-#             my_rect = domain_containers[my_bin]
-
-#             if rect_buffer_zone_cython(point, mins[my_bin], maxs[my_bin], mins_buff[my_bin], maxs_buff[my_bin]):
-#                 # particle coordinates in single array
-#                 # iterate through the transformations
-#                 for t in trans: 
-#                     trans_bin = get_bin_cython(point+t, 2**N, dom_mins,dom_maxs)
-#                     if trans_bin not in my_bins and trans_bin >= 0:
-#                         my_bins.add(trans_bin)
-#                         yield (trans_bin, p_arr[i])
-
-#             # return the first bin, i.e. the only non-ghost bin
-#             yield (my_bin, p_arr[i])
+            
