@@ -179,7 +179,9 @@ class FOFAnalyzer(object):
             repartitioning - see `spark_fof.spark_fof_c.partition_ghosts`
         """ 
 
-        N, buffer_tau, dom_mins, dom_maxs, symmetric = self.N, self.buffer_tau, self.dom_mins, self.dom_maxs, self.symmetric
+        N, buffer_tau, dom_mins, dom_maxs, symmetric = self.N, self.buffer_tau, \
+                                                       self.dom_mins, self.dom_maxs, \
+                                                       self.symmetric 
         def partition_helper(iterator):
             for arr in iterator: 
                 res = function(arr,N,buffer_tau,symmetric,dom_mins,dom_maxs)

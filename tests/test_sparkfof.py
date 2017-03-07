@@ -89,56 +89,30 @@ N = 2
 filename = '/cluster/home/roskarr/work/euclid-test-files/euclid256.nat_no_header'
 
 
-@pytest.fixture(scope='module')
-def sc():
-    import findspark
-    findspark.init()
-    import os
-    import time
-
-    os.environ['SPARK_DRIVER_MEMORY'] = '8G'
-    
-    sj = sparkjob.LSFSparkJob(ncores=ncores,memory=12000,walltime='02:00', template='../run_scripts/job.template')
-
-    sj.wait_to_start()
-
-    time.sleep(10)
-
-    sc = sparkhpc.start_spark(master=sj.master_url, spark_conf='../conf', 
-                              profiling=False, executor_memory='6000M', 
-                              graphframes_package='graphframes:graphframes:0.3.0-spark2.0-s_2.11')
-
-    sc.setCheckpointDir('file:///cluster/home/roskarr/work/euclid')
-    
-    yield sc
-
-    sc.stop()
-
-
-@pytest.fixture(scope='module', params=[1,8])
-def tipsy_analyzer(sc, request):
+@pytest.fixture(params=[1,8])
+def tipsy_analyzer(sc_local, request):
     """TipsyFOFAnalyzer with nMinMembers = [1,8]"""
     import spark_fof
     import numpy as np
 
-    tipsy_analyzer = spark_fof.spark_fof.TipsyFOFAnalyzer(sc, filename, request.param, N, tau, mins, maxs)
+    tipsy_analyzer = spark_fof.spark_fof.TipsyFOFAnalyzer(sc_local, filename, request.param, N, tau, mins, maxs)
 
     return tipsy_analyzer
 
 
-@pytest.fixture(scope='module')
-def tipsy_analyzer_single(sc, request):
+@pytest.fixture()
+def tipsy_analyzer_single(sc_local, request):
     """TipsyFOFAnalyzer with nMinMembers = 8"""
     import spark_fof
     import numpy as np
 
     nMinMembers = 8
-    tipsy_analyzer = spark_fof.spark_fof.TipsyFOFAnalyzer(sc, filename, nMinMembers, N, tau, mins, maxs)
+    tipsy_analyzer = spark_fof.spark_fof.TipsyFOFAnalyzer(sc_local, filename, nMinMembers, N, tau, mins, maxs)
 
     return tipsy_analyzer
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture()
 def ps_fof(tipsy_analyzer, request):
     """Run single-core fof on the particles"""
     from spark_fof.fof import fof
@@ -188,7 +162,7 @@ def test_singlecore_fof(ps_fof, tipsy_analyzer):
 
 
 def test_detailed_particle_counts(ps_fof, tipsy_analyzer):
-    """Test that the counts of particle group counts match"""
+    """Test that the number of groups per particle count is correct"""
     group_count_counts = np.bincount(np.bincount(ps_fof['iGroup'])[1:])
     
     # trigger the full calculation in case it hasn't been done
