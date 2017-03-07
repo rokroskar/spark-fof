@@ -1,6 +1,6 @@
 #!/bin/env python
 #BSUB -J spark-fof-driver
-#BSUB -W 02:00 
+#BSUB -W 1:00 
 #BSUB -o logs/spark-fof-driver-%J.log
 #BSUB -n 1
 #BSUB -R rusage[mem=16000]
@@ -39,7 +39,7 @@ minblock = 30
 maxblock = 32
 
 # submit sparkjob
-sj = sparkhpc.sparkjob.LSFSparkJob(ncores=ncores,memory=8000,walltime='02:00', template='./job.template')
+sj = sparkhpc.sparkjob.LSFSparkJob(ncores=ncores,memory=12000,walltime='1:00', template='./job.template')
 sj.wait_to_start()
 
 # wait for the job to get set up
@@ -47,7 +47,7 @@ time.sleep(30)
 
 # initialize sparkContext
 sc = sparkhpc.start_spark(master=sj.master_url, spark_conf='../conf', 
-                          profiling=False, executor_memory='2000M', graphframes_package='graphframes:graphframes:0.3.0-spark2.0-s_2.11')
+                          profiling=False, executor_memory='4000M', graphframes_package='graphframes:graphframes:0.3.0-spark2.0-s_2.11')
 
 sc.setCheckpointDir('file:///cluster/home/roskarr/work/euclid')
 

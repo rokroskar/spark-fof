@@ -93,12 +93,23 @@ filename = '/cluster/home/roskarr/work/euclid-test-files/euclid256.nat_no_header
 def sc():
     import findspark
     findspark.init()
-    from pyspark import SparkContext
     import os
+    import time
 
     os.environ['SPARK_DRIVER_MEMORY'] = '8G'
-    sc = sparkhpc.start_spark(master="local[2]")
+    
+    sj = sparkjob.LSFSparkJob(ncores=ncores,memory=12000,walltime='02:00', template='../run_scripts/job.template')
+
+    sj.wait_to_start()
+
+    time.sleep(10)
+
+    sc = sparkhpc.start_spark(master=sj.master_url, spark_conf='../conf', 
+                              profiling=False, executor_memory='6000M', 
+                              graphframes_package='graphframes:graphframes:0.3.0-spark2.0-s_2.11')
+
     sc.setCheckpointDir('file:///cluster/home/roskarr/work/euclid')
+    
     yield sc
 
     sc.stop()

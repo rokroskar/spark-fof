@@ -417,6 +417,7 @@ class FOFAnalyzer(object):
             print 'spark_fof DEBUG: non-merge groups = %d merge groups = %d'%(group_counts.count(), merge_group_counts.count())        
 
         # combine the group counts
+        print 'total groups: ', (group_counts.filter(lambda (gid,cnt): gid not in gr_map_inv_b.value) + merge_group_counts).count()
         total_group_counts = (group_counts.filter(lambda (gid,cnt): gid not in gr_map_inv_b.value) + merge_group_counts).collect()
         self.total_group_counts = total_group_counts
         
@@ -432,13 +433,6 @@ class FOFAnalyzer(object):
         groups_map_b = sc.broadcast(groups_map)
 
         final_fof_rdd = no_ghosts_rdd.map(lambda p_arr: relabel_groups_wrapper(p_arr, groups_map_b.value))
-
-        # def output_particles(i,iterator): 
-        #     p_arr = np.concatenate(list(iterator))
-        #     np.save('/cluster/home/roskarr/Projects/spark-fof/debug_data/final_parr%d'%i, p_arr)
-        #     yield True
-
-        # final_fof_rdd.mapPartitionsWithIndex(output_particles).count()
 
         return final_fof_rdd
 

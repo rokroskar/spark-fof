@@ -24,7 +24,7 @@ from spark_fof.spark_fof_c import pdt
 path = '/cluster/home/roskarr/projects/euclid/2Tlc-final/'
 
 # domain parameters
-diff = np.float32(0.033068776)
+diff = np.float32(0.03306878)
 global_min = -31*diff
 global_max = 31*diff
 
@@ -32,10 +32,10 @@ dom_maxs = np.array([global_max]*3, dtype=np.float64)
 dom_mins = np.array([global_min]*3, dtype=np.float64)
 
 tau = 0.2/12600 # 0.2 times mean interparticle separation
-buffer_tau = diff*5./150.
 
 minblock = 30
 maxblock = 32
+nMinMembers = 8
 
 # run fof
 import spark_fof
@@ -94,41 +94,9 @@ print 'number of particles: %d'%len(p_arr)
 
 from spark_fof.fof import fof
 timein2 = time.time()
-fof.run(p_arr,tau,8)
+fof.run(p_arr,tau,nMinMembers)
 print 'fof finished in %f seconds'%(time.time()-timein2)
 
-np.save('fof_8_blocks4', p_arr)
-
-
-# t = time.localtime()
-# print '--------------------'
-# print 'fof finished at {t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'.format(t=t)
-# print 'Number of groups: %d'%ngroups
-# print 'cores: %d\tblocks: %d\ttime elapsed: %f'%(ncores, (maxblock-minblock)**3, time.time()-timein)
-
-
-# print 'Printing memory info'
-# def get_executor_data(x):
-#     tempdir = os.path.join(os.environ['__LSF_JOB_TMPDIR__'],'work')
-#     found = False
-#     lines = []
-#     for dirname, subdirlist, filelist in os.walk(tempdir):
-#         for filename in filelist:
-#             if filename == 'stderr':
-#                 found = True
-#                 print 'found log file'
-#                 with open(os.path.join(dirname,filename),'r') as f:
-#                     for line in f.readlines():
-#                         if line.startswith('spark_fof:'):
-#                             lines.append(line)
-#                             print line
-#     if not found:
-#         lines = ['stderr file not found',]
-#     return lines
-
-# for i, res in enumerate(sc.parallelize(range(ncores)).flatMap(get_executor_data).collect()):
-#     print res
-
-# print 'Printing memory info done'
-# sc.stop()
-# sj.stop()
+np.save('fof_{minblock}_{maxblock}_min{nMinMembers}'.format(minblock=minblock,
+                                                              maxblock=maxblock,
+                                                              nMinMembers=nMinMembers), p_arr)
