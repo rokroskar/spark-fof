@@ -33,8 +33,8 @@ dom_mins = np.array([global_min]*3, dtype=np.float64)
 
 tau = 0.2/12600 # 0.2 times mean interparticle separation
 
-minblock = 30
-maxblock = 32
+minblock = 32
+maxblock = 34
 nMinMembers = 8
 
 # run fof
@@ -68,7 +68,7 @@ print 'Starting fof at {t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'.format(t=t)
 print '--------------------'
 
 timein2 = time.time()
-blockids = range(30,32)
+blockids = range(minblock,maxblock)
 
 # determine which files to read
 get_block_ids = re.compile('blk\.(\d+)\.(\d+)\.(\d+)i')
@@ -100,3 +100,9 @@ print 'fof finished in %f seconds'%(time.time()-timein2)
 np.save('fof_{minblock}_{maxblock}_min{nMinMembers}'.format(minblock=minblock,
                                                               maxblock=maxblock,
                                                               nMinMembers=nMinMembers), p_arr)
+np.save('fof_{minblock}_{maxblock}_min{nMinMembers}_groups'.format(minblock=minblock,
+                                                              maxblock=maxblock,
+                                                              nMinMembers=nMinMembers),
+        np.bincount(p_arr['iGroup']))
+
+
