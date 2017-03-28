@@ -111,9 +111,6 @@ def count_groups_cython(Particle [:] p_arr):
 @cython.boundscheck(False)
 def count_groups_partition_cython(particle_arrays, gr_map_inv_b, nMinMembers): 
     from collections import defaultdict
-    from pympler.asizeof import asizeof
-    import gc
-  
     p_arr = np.concatenate(list(particle_arrays))
     gids, counts = np.unique(p_arr['iGroup'], return_counts=True)
     return ((g,cnt) for (g,cnt) in zip(gids,counts) if (g in gr_map_inv_b.value) or (cnt >= nMinMembers))

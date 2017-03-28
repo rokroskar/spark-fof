@@ -1,7 +1,6 @@
 import numpy as np
 from math import floor, ceil
 from functools import total_ordering
-import networkx as nx
 from collections import defaultdict
 from itertools import izip 
 import re
@@ -622,10 +621,16 @@ class LCFOFAnalyzer(FOFAnalyzer):
         else: 
             files = []
             for dirname, subdirlist, filelist in os.walk(path):
-                for f in filelist:
-                    ids = get_block_ids.findall(f)[0]
-                    if all(int(x) in blockids for x in ids):
-                        files.append(os.path.join(dirname,f))
+                try: 
+                    dirnum = int(os.path.basename(dirname))
+                    if dirnum in blockids: 
+                        for f in filelist:
+                            ids = get_block_ids.findall(f)[0]
+                            if all(int(x) in blockids for x in ids):
+                                files.append(os.path.join(dirname,f))
+                except ValueError: 
+                    pass
+
         files.sort()
         nfiles = len(files) 
         self.nPartitions = nfiles
@@ -692,3 +697,4 @@ class LCFOFAnalyzer(FOFAnalyzer):
 def _get_nparts(filename,headersize,itemsize): 
     """Helper function to get the number of particles in the file"""
     return (os.path.getsize(filename)-headersize)/itemsize
+
