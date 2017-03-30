@@ -614,7 +614,7 @@ class LCFOFAnalyzer(FOFAnalyzer):
                             break
         
         # determine which files to read
-        get_block_ids = re.compile('blk\.(\d+)\.(\d+)\.(\d+)i')
+        get_block_ids = re.compile('blk\.(\d+)\.(\d+)\.(\d+)?')
 
         if blockids is None: 
             files = glob(os.path.join(self.path,'*/*'))
@@ -625,9 +625,10 @@ class LCFOFAnalyzer(FOFAnalyzer):
                     dirnum = int(os.path.basename(dirname))
                     if dirnum in blockids: 
                         for f in filelist:
-                            ids = get_block_ids.findall(f)[0]
-                            if all(int(x) in blockids for x in ids):
-                                files.append(os.path.join(dirname,f))
+                            ids = get_block_ids.findall(f)
+                            if len(ids) > 0:
+                                if all(int(x) in blockids for x in ids[0]):
+                                    files.append(os.path.join(dirname,f))
                 except ValueError: 
                     pass
 
@@ -636,6 +637,11 @@ class LCFOFAnalyzer(FOFAnalyzer):
         self.nPartitions = nfiles
 
         print 'spark_fof: Number of input files: ', nfiles
+
+        # get particle counts per partition
+        nparts = {i:_get_nparts(filename,62500,pdt_lc.itemsize) for i,filename in enumerate(files)}
+
+        print 'spark_fof: Total number of particles: ', np.array(nparts.values()).sum()
         
         # set up the map from x,y,z to partition id        
         ids = map(lambda x: tuple(map(int, get_block_ids.findall(x)[0])), files)
@@ -645,11 +651,6 @@ class LCFOFAnalyzer(FOFAnalyzer):
         
         ids_map_b = sc.broadcast(ids_map)
         loc_to_glob_map_b = sc.broadcast(loc_to_glob_map_b)
-
-        # get particle counts per partition
-        nparts = {i:_get_nparts(filename,62500,pdt_lc.itemsize) for i,filename in enumerate(files)}
-
-        print 'spark_fof: Total number of particles: ', np.array(nparts.values()).sum()
 
         partition_counts = sc.broadcast(nparts)
 

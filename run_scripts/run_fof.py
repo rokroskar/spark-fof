@@ -21,10 +21,11 @@ import numpy as np
 
 
 # set up all parameters
-path = '/cluster/home/roskarr/projects/euclid/2Tlc-final/'
+#path = '/cluster/home/roskarr/projects/euclid/2Tlc-final/'
+path = '/zbox/trove/euclid/2Tlc-final/'
 
 # domain parameters
-diff = np.float32(0.033068776)
+diff = np.float32(0.03306878)
 global_min = -31*diff
 global_max = 31*diff
 
@@ -33,22 +34,23 @@ dom_mins = np.array([global_min]*3, dtype=np.float64)
 
 tau = 0.2/12600 # 0.2 times mean interparticle separation
 
-ncores = 8
-minblock = 30
-maxblock = 32
+ncores = 1000
+minblock = 20
+maxblock = 40
 
 # submit sparkjob
-sj = sparkhpc.sparkjob.LSFSparkJob(ncores=ncores,memory=12000,walltime='1:00', template='./job.template')
+sj = sparkhpc.sparkjob.LSFSparkJob(ncores=ncores,memory=50000,walltime='24:00', template='../notebooks/sparkjob.slurm.template')
 sj.wait_to_start()
 
 # wait for the job to get set up
-time.sleep(30)
+#time.sleep(30)
 
 # initialize sparkContext
-sc = sparkhpc.start_spark(master=sj.master_url, spark_conf='../conf', 
-                          profiling=False, executor_memory='4000M', graphframes_package='graphframes:graphframes:0.3.0-spark2.0-s_2.11')
+sc = sparkhpc.start_spark(master=sj.host_url, spark_conf='../conf', 
+                          profiling=False, executor_memory='30000M', graphframes_package='graphframes:graphframes:0.3.0-spark2.0-s_2.11')
 
-sc.setCheckpointDir('file:///cluster/home/roskarr/work/euclid')
+sc.setCheckpointDir('file:///zbox/data/roskar/checkpoint')
+#sc.setCheckpointDir('file:///cluster/home/roskarr/work/euclid')
 
 timeout = 300
 timein = time.time()
@@ -79,29 +81,5 @@ print 'spark-fof finished at {t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'.format(
 print 'Number of groups: %d'%ngroups
 print 'cores: %d\tblocks: %d\ttime elapsed: %f'%(ncores, (maxblock-minblock)**3, time.time()-timein)
 
-
-print 'Printing memory info'
-def get_executor_data(x):
-    tempdir = os.path.join(os.environ['__LSF_JOB_TMPDIR__'],'work')
-    found = False
-    lines = []
-    for dirname, subdirlist, filelist in os.walk(tempdir):
-        for filename in filelist:
-            if filename == 'stderr':
-                found = True
-                print 'found log file'
-                with open(os.path.join(dirname,filename),'r') as f:
-                    for line in f.readlines():
-                        if line.startswith('spark_fof'):
-                            lines.append(line)
-                            print line
-    if not found:
-        lines = ['stderr file not found',]
-    return lines
-
-for i, res in enumerate(sc.parallelize(range(ncores)).flatMap(get_executor_data).collect()):
-    print res
-
-print 'Printing memory info done'
 sc.stop()
 sj.stop()
