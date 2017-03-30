@@ -34,6 +34,8 @@ def lightcone_analyzer(sc_distributed):
                                                            blockids=range(30,32), 
                                                            buffer_tau=tau*2)
 
+    lightcone_analyzer.fof_rdd.cache()
+    
     return lightcone_analyzer
 
 @pytest.fixture()

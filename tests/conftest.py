@@ -2,14 +2,12 @@ import pytest
 import sparkhpc
 from sparkhpc import sparkjob
 import numpy as np
+import os
+import spark_fof
 
 def pytest_addoption(parser):
-    parser.addoption("--clusterid", action="store", default="ID of a running cluster")
+    parser.addoption("--clusterid", action="store", default=None)
 
-def pytest_generate_tests(metafunc): 
-    option_value = metafunc.config.option.clusterid
-    if 'clusterid' in metafunc.fixturenames and option_value is not None:
-        metafunc.parametrize("clusterid", [option_value], scope='module')
 
 @pytest.fixture(scope='module')
 def sc_local():
@@ -33,7 +31,7 @@ def sc_local():
 
 @pytest.fixture(scope='module')
 @pytest.mark.unit(scope='module')
-def sc_distributed(clusterid):
+def sc_distributed(request):
     """set up a spark context on the cluster"""
     import findspark
     findspark.init()
@@ -44,10 +42,15 @@ def sc_distributed(clusterid):
 
     os.environ['SPARK_DRIVER_MEMORY'] = '8G'
     
+    clusterid = request.config.getoption('--clusterid')
+
     if clusterid is not None: 
         sj = sparkjob.LSFSparkJob(clusterid=int(clusterid))
     else:
-        sj = sparkjob.LSFSparkJob(ncores=ncores,memory=12000,walltime='02:00', template='../run_scripts/job.template')
+        sj = sparkjob.LSFSparkJob(ncores=ncores,
+                                  memory=12000,
+                                  walltime='02:00', 
+                                  template=os.path.join(os.path.dirname(os.path.abspath(spark_fof.__file__)),'../run_scripts/job.template'))
         sj.wait_to_start()
         time.sleep(30)
 
