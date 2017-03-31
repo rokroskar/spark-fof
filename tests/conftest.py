@@ -3,7 +3,6 @@ import sparkhpc
 from sparkhpc import sparkjob
 import numpy as np
 import os
-import spark_fof
 
 def pytest_addoption(parser):
     parser.addoption("--clusterid", action="store", default=None)
@@ -50,7 +49,7 @@ def sc_distributed(request):
         sj = sparkjob.LSFSparkJob(ncores=ncores,
                                   memory=12000,
                                   walltime='02:00', 
-                                  template=os.path.join(os.path.dirname(os.path.abspath(spark_fof.__file__)),'../run_scripts/job.template'))
+                                  template=os.path.join(os.path.dirname(os.path.abspath(__file__)),'../run_scripts/job.template'))
         sj.wait_to_start()
         time.sleep(30)
 

@@ -31,11 +31,11 @@ def lightcone_analyzer(sc_distributed):
     lightcone_analyzer = spark_fof.spark_fof.LCFOFAnalyzer(sc_distributed, path, 
                                                            nMinMembers, 62, tau, 
                                                            dom_mins, dom_maxs, 
-                                                           blockids=range(30,32), 
+                                                           blockids=range(minblock,maxblock), 
                                                            buffer_tau=tau*2)
 
     lightcone_analyzer.fof_rdd.cache()
-    
+
     return lightcone_analyzer
 
 @pytest.fixture()
