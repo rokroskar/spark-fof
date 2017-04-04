@@ -38,7 +38,7 @@ tau = 0.2/12600 # 0.2 times mean interparticle separation
 
 ncores = 8
 minblock = 30
-maxblock = 38
+maxblock = 32
 
 # submit sparkjob
 sj = sparkhpc.sparkjob.SLURMSparkJob(ncores=ncores,cores_per_executor=4, memory_per_executor=50000, walltime='72:00')

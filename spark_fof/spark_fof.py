@@ -245,13 +245,14 @@ class FOFAnalyzer(object):
                 
                
 
-            for arr in np.split(part_arr, range(batch_size,len(part_arr),batch_size)):
-                yield arr
+            # for arr in np.split(part_arr, range(batch_size,len(part_arr),batch_size)):
+            #     yield arr
+            yield part_arr
 
         partitioned_rdd = self.partitioned_rdd
 
         fof_rdd = partitioned_rdd.mapPartitionsWithIndex(lambda index, particles: run_local_fof(index, particles, tau, 1))
-
+        fof_rdd.setName('fof_rdd')
         return fof_rdd
 
 
@@ -350,13 +351,12 @@ class FOFAnalyzer(object):
        
         def remap_partition(particles, gmap):
             """Helper function to remap groups"""
-            for p_arr in particles: 
-                remap_gid_partition_cython(p_arr, gmap)
-                yield p_arr
+            remap_gid_partition_cython(particles, gmap)
+            return particles
 
         m = self._get_level_map()
         m_b = self.sc.broadcast(m)
-        merged_rdd = fof_rdd.mapPartitions(lambda particles: remap_partition(particles, m_b.value))
+        merged_rdd = fof_rdd.map(lambda p_arr: remap_partition(p_arr,m_b.value))
 
         self.group_merge_map = m
 
@@ -406,19 +406,25 @@ class FOFAnalyzer(object):
         no_ghosts_rdd = merged_rdd.map(lambda p: p[np.where(p['is_ghost'] != GHOST_PARTICLE_COPY)[0]])
 
         # count up the number of particles in each group in each partition
-        group_counts = no_ghosts_rdd.mapPartitions(lambda p_arrs: count_groups_partition_cython(p_arrs, gr_map_inv_b, nMinMembers)).cache()
+        group_counts = (no_ghosts_rdd.mapPartitions(lambda p_arrs: 
+                                                    count_groups_partition_cython(p_arrs, gr_map_inv_b, nMinMembers))
+                                     .setName('group_counts')
+                                     .persist(StorageLevel.MEMORY_AND_DISK_SER))
         
         # merge the groups that reside in multiple domains
         merge_group_counts = (group_counts.filter(lambda (g,cnt): g in gr_map_inv_b.value)
                                           .reduceByKey(lambda a,b: a+b, nPartitions)
-                                          .filter(lambda (g,cnt): cnt>=nMinMembers)).cache()
+                                          .filter(lambda (g,cnt): cnt>=nMinMembers)
+                                          .setName('merge_groups')
+                                          .persist(StorageLevel.MEMORY_AND_DISK_SER))
 
         if self.DEBUG:
             print 'spark_fof DEBUG: non-merge groups = %d merge groups = %d'%(group_counts.count(), merge_group_counts.count())        
 
         # combine the group counts
-        print 'total groups: ', (group_counts.filter(lambda (gid,cnt): gid not in gr_map_inv_b.value) + merge_group_counts).count()
         total_group_counts = (group_counts.filter(lambda (gid,cnt): gid not in gr_map_inv_b.value) + merge_group_counts).collect()
+        print 'total groups: ', len(total_group_counts)
+        
         self.total_group_counts = total_group_counts
         
         # get the final group mapping by sorting groups by particle count
