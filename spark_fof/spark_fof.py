@@ -219,39 +219,11 @@ class FOFAnalyzer(object):
         """
         tau = self.tau
 
-        def run_local_fof(partition_index, particle_iter, tau, nMinMembers, batch_size=1024*10240, DEBUG=False): 
-            """Helper function to run FOF locally on the individual partitions"""
-            part_arr = np.concatenate(list(particle_iter))
-            if len(part_arr)>0:
-                tin = time.time()
-                t = time.localtime()
-                print 'spark_fof: running local fof on {part} started at {t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'.format(part=partition_index,t=t)
-                # run fof
-                tin = time.time()
-                part_arr.sort(kind='mergesort', order='iOrder')
-                print 'sorting took %f seconds'%(time.time()-tin)
-                
-                fof.run(part_arr, tau, nMinMembers)
-                print 'spark_fof: fof on {part} finished in {seconds}'.format(part=partition_index, seconds=time.time()-tin)
-
-                print 'particles in partition %d: %d'%(partition_index, len(part_arr))
-                if DEBUG:
-                    for i in range(100): 
-                        print 'spark_fof DEBUG: %d %d'%(part_arr['iOrder'][i], part_arr['iGroup'][i])
-
-                # encode the groupID  
-                spark_fof_c.encode_gid(part_arr, partition_index)
-                if DEBUG: print 'spark_fof DEBUG: total number of groups in partition %d: %d'%(partition_index, len(np.unique(part_arr['iGroup'])))
-                
-               
-
-            # for arr in np.split(part_arr, range(batch_size,len(part_arr),batch_size)):
-            #     yield arr
-            yield part_arr
-
         partitioned_rdd = self.partitioned_rdd
 
-        fof_rdd = partitioned_rdd.mapPartitionsWithIndex(lambda index, particles: run_local_fof(index, particles, tau, 1))
+        # fof_rdd = partitioned_rdd.mapPartitionsWithIndex(lambda index, particles: run_local_fof(index, particles, tau, 1))
+        fof_rdd = (partitioned_rdd.mapPartitions(concatenate_partition)
+                                  .map(lambda p_arr: run_local_fof_map(p_arr, tau, 1)))
         fof_rdd.setName('fof_rdd')
         return fof_rdd
 
@@ -275,6 +247,7 @@ class FOFAnalyzer(object):
 
         nPartitions = sc.defaultParallelism*5
 
+        #### TO FIX ####
         groups_map = (fof_rdd.flatMap(lambda p: p[np.where(p['is_ghost'])[0]])
                              .map(pid_gid)
                              .groupByKey(nPartitions)
@@ -358,6 +331,8 @@ class FOFAnalyzer(object):
         m_b = self.sc.broadcast(m)
         merged_rdd = fof_rdd.map(lambda p_arr: remap_partition(p_arr,m_b.value))
 
+        merged_rdd.setName('merged_rdd')
+        print 'merged_rdd: ', merged_rdd
         self.group_merge_map = m
 
         return merged_rdd
@@ -385,22 +360,8 @@ class FOFAnalyzer(object):
         gr_map_inv = {v:k for (k,v) in group_merge_map.iteritems()}
         gr_map_inv_b = sc.broadcast(gr_map_inv)
 
-        def count_groups_partition(particle_arrays, gr_map_inv_b, nMinMembers): 
-            p_arr = np.concatenate(list(particle_arrays))
-            del(particle_arrays)
-            gs, counts = np.unique(p_arr['iGroup'], return_counts=True)
-            del(p_arr)
-            gc.collect()
-            gr_map_inv = gr_map_inv_b.value
-            return ((g,cnt) for g,cnt in izip(gs,counts) if (g in gr_map_inv) or (cnt >= nMinMembers))
-
-        def count_groups(p):
-            gs, counts = np.unique(p['iGroup'], return_counts=True)
-            return ((g,cnt) for g,cnt in izip(gs,counts))
-
-        def relabel_groups_wrapper(p_arr, groups_map): 
-            relabel_groups(p_arr, groups_map)
-            return p_arr            
+        from pympler import asizeof
+        print 'size of map: ', len(gr_map_inv), asizeof.asizeof(gr_map_inv)
 
         # first, get rid of ghost particles
         no_ghosts_rdd = merged_rdd.map(lambda p: p[np.where(p['is_ghost'] != GHOST_PARTICLE_COPY)[0]])
@@ -412,16 +373,20 @@ class FOFAnalyzer(object):
                                      .persist(StorageLevel.MEMORY_AND_DISK_SER))
         
         # merge the groups that reside in multiple domains
+        print 'starting reducebykey: ', time.time()
+        timein = time.time()
         merge_group_counts = (group_counts.filter(lambda (g,cnt): g in gr_map_inv_b.value)
                                           .reduceByKey(lambda a,b: a+b, nPartitions)
                                           .filter(lambda (g,cnt): cnt>=nMinMembers)
                                           .setName('merge_groups')
                                           .persist(StorageLevel.MEMORY_AND_DISK_SER))
+        print 'finished reducebykey: ', time.time(), time.time()-timein
 
         if self.DEBUG:
             print 'spark_fof DEBUG: non-merge groups = %d merge groups = %d'%(group_counts.count(), merge_group_counts.count())        
 
         # combine the group counts
+        print 'starting collect: ', time.time()
         total_group_counts = (group_counts.filter(lambda (gid,cnt): gid not in gr_map_inv_b.value) + merge_group_counts).collect()
         print 'total groups: ', len(total_group_counts)
         
@@ -447,6 +412,63 @@ class FOFAnalyzer(object):
         nbins, mins, maxs = self.nBins, self.dom_mins, self.dom_maxs
         return spark_fof_c.get_bin_wrapper(pos, nbins, mins, maxs)
 
+def concatenate_partition(iterator): 
+    yield np.concatenate(list(iterator))
+
+def run_local_fof_map(part_arr, tau, nMinMembers):
+    part_arr.sort(kind='mergesort', order='iOrder')
+    timein = time.time()
+    fof.run(part_arr, tau, nMinMembers)
+    print 'fof took %f seconds'%(time.time()-timein)
+    return part_arr
+
+def run_local_fof(partition_index, particle_iter, tau, nMinMembers, batch_size=1024*10240, DEBUG=False): 
+    """Helper function to run FOF locally on the individual partitions"""
+    part_arr = np.concatenate(list(particle_iter))
+    if len(part_arr)>0:
+        tin = time.time()
+        t = time.localtime()
+        print 'spark_fof: running local fof on {part} started at {t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'.format(part=partition_index,t=t)
+        # run fof
+        tin = time.time()
+        part_arr.sort(kind='mergesort', order='iOrder')
+        print 'sorting took %f seconds'%(time.time()-tin)
+        
+        fof.run(part_arr, tau, nMinMembers)
+        print 'spark_fof: fof on {part} finished in {seconds}'.format(part=partition_index, seconds=time.time()-tin)
+
+        print 'particles in partition %d: %d'%(partition_index, len(part_arr))
+        if DEBUG:
+            for i in range(100): 
+                print 'spark_fof DEBUG: %d %d'%(part_arr['iOrder'][i], part_arr['iGroup'][i])
+
+        # encode the groupID  
+        spark_fof_c.encode_gid(part_arr, partition_index)
+        if DEBUG: print 'spark_fof DEBUG: total number of groups in partition %d: %d'%(partition_index, len(np.unique(part_arr['iGroup'])))
+        
+       
+
+    # for arr in np.split(part_arr, range(batch_size,len(part_arr),batch_size)):
+    #     yield arr
+    yield part_arr
+
+
+def count_groups_partition(particle_arrays, gr_map_inv_b, nMinMembers): 
+    p_arr = np.concatenate(list(particle_arrays))
+    del(particle_arrays)
+    gs, counts = np.unique(p_arr['iGroup'], return_counts=True)
+    del(p_arr)
+    gc.collect()
+    gr_map_inv = gr_map_inv_b.value
+    return ((g,cnt) for g,cnt in izip(gs,counts) if (g in gr_map_inv) or (cnt >= nMinMembers))
+
+def count_groups(p):
+    gs, counts = np.unique(p['iGroup'], return_counts=True)
+    return ((g,cnt) for g,cnt in izip(gs,counts))
+
+def relabel_groups_wrapper(p_arr, groups_map): 
+    relabel_groups(p_arr, groups_map)
+    return p_arr            
 
 def pid_gid(p):
     """Map the particle to its pid and gid"""
