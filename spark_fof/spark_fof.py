@@ -218,6 +218,7 @@ class FOFAnalyzer(object):
         First does a partitioning step to put particles in their respective domain containers
         """
         tau = self.tau
+        import os
 
         def run_local_fof(partition_index, particle_iter, tau, nMinMembers, batch_size=1024*10240, DEBUG=False): 
             """Helper function to run FOF locally on the individual partitions"""
@@ -225,16 +226,15 @@ class FOFAnalyzer(object):
             if len(part_arr)>0:
                 tin = time.time()
                 t = time.localtime()
-                print 'spark_fof: running local fof on {part} started at {t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'.format(part=partition_index,t=t)
-                # run fof
+                print 'spark_fof: starting fof at {time}, pid={pid}'.format(part=partition_index,t=t, time=time.time(), pid=os.getpid())
+                # run fof_rdd
                 tin = time.time()
                 part_arr.sort(kind='mergesort', order='iOrder')
-                print 'sorting took %f seconds'%(time.time()-tin)
+                print 'spark_fof: sorting took %f seconds'%(time.time()-tin)
                 
                 fof.run(part_arr, tau, nMinMembers)
-                print 'spark_fof: fof on {part} finished in {seconds}'.format(part=partition_index, seconds=time.time()-tin)
+                print 'spark_fof: finished fof at {time}, pid={pid}'.format(part=partition_index, time=time.time(), pid=os.getpid())
 
-                print 'particles in partition %d: %d'%(partition_index, len(part_arr))
                 if DEBUG:
                     for i in range(100): 
                         print 'spark_fof DEBUG: %d %d'%(part_arr['iOrder'][i], part_arr['iGroup'][i])
@@ -350,10 +350,12 @@ class FOFAnalyzer(object):
        
         def remap_partition(particles, gmap):
             """Helper function to remap groups"""
+            print 'spark_fof: starting merged_rdd remap at %f, pid=%d'%(time.time(),os.getpid())
             for p_arr in particles: 
                 remap_gid_partition_cython(p_arr, gmap)
                 yield p_arr
-
+            print 'spark_fof: finished merged_rdd remap at %f, pid=%d'%(time.time(),os.getpid())
+            
         m = self._get_level_map()
         m_b = self.sc.broadcast(m)
         merged_rdd = fof_rdd.mapPartitions(lambda particles: remap_partition(particles, m_b.value))
@@ -386,13 +388,11 @@ class FOFAnalyzer(object):
         gr_map_inv_b = sc.broadcast(gr_map_inv)
 
         def count_groups_partition(particle_arrays, gr_map_inv_b, nMinMembers): 
-            p_arr = np.concatenate(list(particle_arrays))
-            del(particle_arrays)
-            gs, counts = np.unique(p_arr['iGroup'], return_counts=True)
-            del(p_arr)
-            gc.collect()
-            gr_map_inv = gr_map_inv_b.value
-            return ((g,cnt) for g,cnt in izip(gs,counts) if (g in gr_map_inv) or (cnt >= nMinMembers))
+            print 'spark_fof: starting group count at %f, pid=%d'%(time.time(),os.getpid())
+            group_arrs = np.concatenate([p_arr['iGroup'] for p_arr in particle_arrays])
+            gids, counts = np.unique(group_arrs, return_counts=True)
+            print 'spark_fof: finished group count at %f, pid=%d'%(time.time(),os.getpid())
+            return ((g,cnt) for (g,cnt) in zip(gids,counts) if (g in gr_map_inv_b.value) or (cnt >= nMinMembers))
 
         def count_groups(p):
             gs, counts = np.unique(p['iGroup'], return_counts=True)
@@ -406,7 +406,7 @@ class FOFAnalyzer(object):
         no_ghosts_rdd = merged_rdd.map(lambda p: p[np.where(p['is_ghost'] != GHOST_PARTICLE_COPY)[0]])
 
         # count up the number of particles in each group in each partition
-        group_counts = no_ghosts_rdd.mapPartitions(lambda p_arrs: count_groups_partition_cython(p_arrs, gr_map_inv_b, nMinMembers)).cache()
+        group_counts = no_ghosts_rdd.mapPartitions(lambda p_arrs: count_groups_partition(p_arrs, gr_map_inv_b, nMinMembers)).cache()
         
         # merge the groups that reside in multiple domains
         merge_group_counts = (group_counts.filter(lambda (g,cnt): g in gr_map_inv_b.value)
@@ -578,6 +578,7 @@ class LCFOFAnalyzer(FOFAnalyzer):
         """
 
         from glob import glob
+        import os
         sc = self.sc
         pdt_lc = np.dtype([('pos', 'f4', 3),('vel', 'f4', 3)])
 
@@ -610,7 +611,9 @@ class LCFOFAnalyzer(FOFAnalyzer):
                             new_arr['pos'] = p_arr['pos']
                             yield new_arr
                         else: 
-                            print 'spark_fof: reading %s took %d seconds in partition %d'%(filename, time.time()-timein, index)
+                            t_elapsed = time.time()-timein
+                            rate = os.path.getsize(filename)/1e6/t_elapsed
+                            print 'spark_fof: reading %s took %d seconds in partition %d, %f MB/sec'%(filename, t_elapsed, index, rate)
                             break
         
         # determine which files to read
