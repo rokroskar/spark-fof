@@ -348,8 +348,7 @@ class FOFAnalyzer(object):
         """
         fof_rdd = self.fof_rdd
         nPartitions = self.nPartitions
-        blockids = self.blockids
-        
+
         def remap_partition(particles, gmap):
             """Helper function to remap groups"""
             print 'spark_fof: starting merged_rdd remap at %f, pid=%d'%(time.time(),os.getpid())
@@ -358,42 +357,35 @@ class FOFAnalyzer(object):
                 yield p_arr
             print 'spark_fof: finished merged_rdd remap at %f, pid=%d'%(time.time(),os.getpid())
         
-        def remap_local_groups(iterator):
-            group_dict = {}
-            parts_list = []
-            for element in iterator: 
-                if isinstance(element, tuple): 
-                    group_dict[element[0]] = element[1]
-                else: 
-                    parts_list.append(element)
-    
-                for p_arr in parts_list:
-                    spark_fof.spark_fof_c.remap_gid_partition_cython(p_arr, group_dict)
-                    yield p_arr
+        def remap_local_groups(iterator):    
+            group_mapping_dict = iterator.next()    
+            for p_arr in iterator:
+                spark_fof.spark_fof_c.remap_gid_partition_cython(p_arr, group_mapping_dict)
+                yield p_arr
+
+        def create_map_dict(iterator):
+            group_map_dict = {g:g_p for g,g_p in iterator}
+            yield group_map_dict
 
         def decode(gid): 
             pid_p = gid >> 32
             gid_p = gid ^ (pid_p << 32)
             return pid_p, gid_p
 
-        dim = max(blockids) - min(blockids)
-        copy_partitions = lambda x: [x, x-1, x-dim, x-dim**2, x-dim-dim**2, x-1-dim, x-1-dim-dim**2]
-
         mapping = self._get_level_map().cache()
 
-        partitioned_mapping = (mapping.flatMap(lambda (g,g_p): 
-                                    [(gid, (g,g_p)) for gid in copy_partitions(decode(g)[0]) if gid > 0])
-                                      .partitionBy(nPartitions)
-                                      .map(lambda (k,v): v, preservesPartitioning=True))
+        group_merge_map = (mapping.map(lambda (g,g_p): (decode(g)[0], (g,g_p)))
+                                  .partitionBy(nPartitions)
+                                  .map(lambda (k,v): v, preservesPartitioning=True)
+                                  .mapPartitions(create_map_dict, preservesPartitioning=True)).cache()
 
-        combined_rdd = fof_rdd + partitioned_mapping 
+        
+
+        combined_rdd =  group_merge_map + fof_rdd
 
         merged_rdd = combined_rdd.mapPartitions(remap_local_groups)
 
-        # m_b = self.sc.broadcast(m)
-        # merged_rdd = fof_rdd.mapPartitions(lambda particles: remap_partition(particles, m_b.value))
-
-        self.group_merge_map = mapping
+        self.group_merge_map = group_merge_map
 
         return merged_rdd
 
@@ -407,6 +399,7 @@ class FOFAnalyzer(object):
         from pyspark.sql import Row
 
         merged_rdd = self.merged_rdd
+        group_merge_map = self.group_merge_map
         sc = self.sc
         sqc = pyspark.sql.SQLContext(sc)
 
@@ -427,9 +420,18 @@ class FOFAnalyzer(object):
             print 'spark_fof: finished group count at %f, pid=%d'%(time.time(),os.getpid())
             return ((g,cnt) for (g,cnt) in zip(gids,counts) if (g in gr_map_inv_b.value) or (cnt >= nMinMembers))
 
-        def count_groups(p):
-            gs, counts = np.unique(p['iGroup'], return_counts=True)
-            return ((g,cnt) for g,cnt in izip(gs,counts))
+        def count_groups_local(iterator, nMinMembers):
+            # the first element is the group mapping dictionary
+            group_dict = iterator.next()
+            
+            group_arrs = np.concatenate([p_arr['iGroup'] for p_arr in iterator])
+            gids, counts = np.unique(group_arrs, return_counts=True)
+            return ((g,cnt) for (g,cnt) in zip(gids, counts) if (g in group_dict) or (cnt >= nMinMembers))
+
+
+        def filter_distributed_groups(iterator):
+            groups_dict = iterator.first()
+            return ((gid, count) for (gid,count) in iterator if gid in groups_dict)
 
         def relabel_groups_wrapper(p_arr, groups_map): 
             relabel_groups(p_arr, groups_map)
@@ -439,12 +441,13 @@ class FOFAnalyzer(object):
         no_ghosts_rdd = merged_rdd.map(lambda p: p[np.where(p['is_ghost'] != GHOST_PARTICLE_COPY)[0]])
 
         # count up the number of particles in each group in each partition
-        group_counts = no_ghosts_rdd.mapPartitions(lambda p_arrs: count_groups_partition(p_arrs, gr_map_inv_b, nMinMembers)).cache()
+        group_counts = (group_merge_map + no_ghosts_rdd).mapPartitions(lambda i: count_groups_local(i, nMinMembers)).cache()
         
         # merge the groups that reside in multiple domains
-        merge_group_counts = (group_counts.filter(lambda (g,cnt): g in gr_map_inv_b.value)
-                                          .reduceByKey(lambda a,b: a+b, nPartitions)
-                                          .filter(lambda (g,cnt): cnt>=nMinMembers)).cache()
+        spread_groups = (group_merge_map + group_counts).mapPartitions(filter_distributed_groups)
+
+        merge_group_counts = (spread_groups.reduceByKey(lambda a,b: a+b, nPartitions)
+                                           .filter(lambda (g,cnt): cnt>=nMinMembers)).cache()
 
         if self.DEBUG:
             print 'spark_fof DEBUG: non-merge groups = %d merge groups = %d'%(group_counts.count(), merge_group_counts.count())        
