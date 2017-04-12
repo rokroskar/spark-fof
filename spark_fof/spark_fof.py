@@ -8,6 +8,7 @@ import time
 import os
 import gc 
 import warnings
+from pympler import asizeof
 
 # initialize spark to load spark classes
 import findspark
@@ -250,7 +251,9 @@ class FOFAnalyzer(object):
 
         partitioned_rdd = self.partitioned_rdd
 
-        fof_rdd = partitioned_rdd.mapPartitionsWithIndex(lambda index, particles: run_local_fof(index, particles, tau, 1))
+        fof_rdd = partitioned_rdd.mapPartitionsWithIndex(lambda index, particles: 
+                                                         run_local_fof(index, particles, tau, 1), 
+                                                         preservesPartitioning=True)
 
         return fof_rdd
 
@@ -328,16 +331,13 @@ class FOFAnalyzer(object):
                           .rdd.map(lambda row: (row.component, row.id))
                           .groupByKey(nPartitions)
                           .filter(lambda (k,v): len(v.data)>1)
-                          .flatMap(make_mapping)
-                          .collectAsMap())
+                          .flatMap(make_mapping))
+                         # .collectAsMap())
 
         if self.DEBUG:
             print 'spark_fof DEBUG: groups in final mapping = %d'%len(mapping)
-            # from pickle import dump
-            # with open('mapping2.dump', 'w') as f: 
-            #     dump(mapping, f, -1)
 
-        print 'spark_fof <timing>: domain group mapping build took %f seconds'%(time.time()-timein)
+        print 'spark_fof: domain group mapping build took %f seconds'%(time.time()-timein)
         return mapping
 
 
@@ -347,7 +347,9 @@ class FOFAnalyzer(object):
         boundaries and remap to a lowest common group ID. 
         """
         fof_rdd = self.fof_rdd
-       
+        nPartitions = self.nPartitions
+        blockids = self.blockids
+        
         def remap_partition(particles, gmap):
             """Helper function to remap groups"""
             print 'spark_fof: starting merged_rdd remap at %f, pid=%d'%(time.time(),os.getpid())
@@ -355,12 +357,43 @@ class FOFAnalyzer(object):
                 remap_gid_partition_cython(p_arr, gmap)
                 yield p_arr
             print 'spark_fof: finished merged_rdd remap at %f, pid=%d'%(time.time(),os.getpid())
-            
-        m = self._get_level_map()
-        m_b = self.sc.broadcast(m)
-        merged_rdd = fof_rdd.mapPartitions(lambda particles: remap_partition(particles, m_b.value))
+        
+        def remap_local_groups(iterator):
+            group_dict = {}
+            parts_list = []
+            for element in iterator: 
+                if isinstance(element, tuple): 
+                    group_dict[element[0]] = element[1]
+                else: 
+                    parts_list.append(element)
+    
+                for p_arr in parts_list:
+                    spark_fof.spark_fof_c.remap_gid_partition_cython(p_arr, group_dict)
+                    yield p_arr
 
-        self.group_merge_map = m
+        def decode(gid): 
+            pid_p = gid >> 32
+            gid_p = gid ^ (pid_p << 32)
+            return pid_p, gid_p
+
+        dim = max(blockids) - min(blockids)
+        copy_partitions = lambda x: [x, x-1, x-dim, x-dim**2, x-dim-dim**2, x-1-dim, x-1-dim-dim**2]
+
+        mapping = self._get_level_map().cache()
+
+        partitioned_mapping = (mapping.flatMap(lambda (g,g_p): 
+                                    [(gid, (g,g_p)) for gid in copy_partitions(decode(g)[0]) if gid > 0])
+                                      .partitionBy(nPartitions)
+                                      .map(lambda (k,v): v, preservesPartitioning=True))
+
+        combined_rdd = fof_rdd + partitioned_mapping 
+
+        merged_rdd = combined_rdd.mapPartitions(remap_local_groups)
+
+        # m_b = self.sc.broadcast(m)
+        # merged_rdd = fof_rdd.mapPartitions(lambda particles: remap_partition(particles, m_b.value))
+
+        self.group_merge_map = mapping
 
         return merged_rdd
 
@@ -534,6 +567,8 @@ class LCFOFAnalyzer(FOFAnalyzer):
         self._ids_map = None
         self._global_to_local_map = None
         self._local_to_global_map = None
+        self.blockids = kwargs['blockids']
+
         super(LCFOFAnalyzer, self).__init__(sc, path, *args, **kwargs)
 
     @property
