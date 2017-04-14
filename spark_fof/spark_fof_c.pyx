@@ -96,7 +96,7 @@ cpdef remap_gid_partition_cython(Particle [:] p_arr, dict gid_map):
 def count_groups_cython(Particle [:] p_arr):
     """Count particles per group and yield one group at a time"""
     cdef int i
-    cdef long [:] gc_mv
+    cdef long [:] gc_mv2
     cdef long [:] counts_mv
 
     gc, counts = np.unique(np.asarray(p_arr)['iGroup'], return_counts=True)
@@ -110,9 +110,8 @@ def count_groups_cython(Particle [:] p_arr):
 
 @cython.boundscheck(False)
 def count_groups_partition_cython(particle_arrays, gr_map_inv_b, nMinMembers): 
-    from collections import defaultdict
-    p_arr = np.concatenate(list(particle_arrays))
-    gids, counts = np.unique(p_arr['iGroup'], return_counts=True)
+    group_arrs = np.concatenate([p_arr['iGroup'] for p_arr in particle_arrays])
+    gids, counts = np.unique(group_arrs, return_counts=True)
     return ((g,cnt) for (g,cnt) in zip(gids,counts) if (g in gr_map_inv_b.value) or (cnt >= nMinMembers))
 
 
@@ -293,4 +292,18 @@ def relabel_groups(Particle [:] p_arr, groups_map):
             p_arr[i].iGroup = groups_map[g]
         else: 
             p_arr[i].iGroup = 0
+
+
+def extract_noghost_pid_gid(Particle [:] p_arr):
+    cdef int i 
+    cdef list pid_gids = []
+
+    for i in range(p_arr.shape[0]):
+        if p_arr[i].is_ghost>0:
+            print (p_arr[i].iOrder, p_arr[i].iGroup)
+            pid_gids.append((p_arr[i].iOrder, p_arr[i].iGroup))
+
+    return pid_gids
+
+
             
