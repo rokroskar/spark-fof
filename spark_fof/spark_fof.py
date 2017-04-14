@@ -618,20 +618,6 @@ class LCFOFAnalyzer(FOFAnalyzer):
         pdt_lc = np.dtype([('pos', 'f4', 3),('vel', 'f4', 3)])
 
         blockids = kwargs['blockids']
-
-        def set_particle_IDs_partition(index, iterator): 
-            """
-            Use the aggregate partition counts to set monotonically increasing 
-            particle indices
-            """
-            p_counts = partition_counts.value
-            local_index = 0
-            start_index = sum([p_counts[i] for i in range(index)])
-            for arr in iterator:
-                arr['iOrder'] = range(start_index + local_index, start_index + local_index + len(arr))
-                arr['iGroup'] = loc_to_glob_map_b.value[index]
-                local_index += len(arr)
-                yield arr
         
         def read_file(index, i, chunksize=102400): 
             for part,filename in i:
@@ -663,9 +649,9 @@ class LCFOFAnalyzer(FOFAnalyzer):
                     dirnum = int(os.path.basename(dirname))
                     if dirnum in blockids: 
                         for f in filelist:
-                            ids = get_block_ids.findall(f)
+                            ids = get_block_ids.findall(f)[0]
                             if len(ids) > 0:
-                                if all(int(x) in blockids for x in ids[0]):
+                                if all(int(x) in blockids for x in ids):
                                     files.append(os.path.join(dirname,f))
                 except ValueError: 
                     pass
@@ -700,6 +686,46 @@ class LCFOFAnalyzer(FOFAnalyzer):
                                                        preservesPartitioning=True))
       
         return rec_rdd
+
+    def read_data_hdfs(self, namenode, path, *kwargs):
+        from glob import glob
+        import os
+        sc = self.sc
+        pdt_lc = np.dtype([('pos', 'f4', 3),('vel', 'f4', 3)])
+
+        blockids = kwargs['blockids']
+
+        get_block_ids = re.compile('blk\.(\d+)\.(\d+)\.(\d+)?')
+        include_file = lambda filename: all([int(blk) in blockids for blk in get_block_ids.findall(filename)[0]])
+        
+        ids = []
+        for i in blockids:
+            for j in blockids: 
+                for k in blockids:
+                    ids.append((i,j,k))
+
+        ids_map = {x:i for i,x in enumerate(ids)}
+        self.ids_map = ids_map
+
+        loc_to_glob_map_b = self.local_to_global_map
+        
+        ids_map_b = sc.broadcast(ids_map)
+        loc_to_glob_map_b = sc.broadcast(loc_to_glob_map_b)
+
+        # iterate through the files to get the file sizes
+        from snakebite.client import Client
+        c = Client(namenode)
+
+        nparts = {}
+        for f in c.ls(['/2Tlc']):
+            blocks = tuple(map(int, get_block_ids.findall(os.path.basename(f['path']))[0]))
+            if all(b in blockids for b in blocks): 
+                nparts[ids_map[blocks]] = f['length']/24
+
+
+        rec_rdd = (sc.binaryFiles(path)
+                     .filter(lambda (filename,_): include_file(filename))
+                     .map(lambda (filename, data): (ids_map_b.value[id],filename)))
 
     def partition_particles(self): 
         """
@@ -737,3 +763,16 @@ def _get_nparts(filename,headersize,itemsize):
     """Helper function to get the number of particles in the file"""
     return (os.path.getsize(filename)-headersize)/itemsize
 
+def set_particle_IDs_partition(index, iterator): 
+    """
+    Use the aggregate partition counts to set monotonically increasing 
+    particle indices
+    """
+    p_counts = partition_counts.value
+    local_index = 0
+    start_index = sum([p_counts[i] for i in range(index)])
+    for arr in iterator:
+        arr['iOrder'] = range(start_index + local_index, start_index + local_index + len(arr))
+        arr['iGroup'] = loc_to_glob_map_b.value[index]
+        local_index += len(arr)
+        yield arr
