@@ -87,7 +87,8 @@ cpdef int run(np.ndarray[cfof.PARTICLE] particles, float fEps, int nMembers):
     kdTime(kd,&sec,&usec)
 
     # eliminate small groups
-    nGroup = kdTooSmall(kd, nMembers)    
+    if nMembers > 1:
+        nGroup = kdTooSmall(kd, nMembers)    
 
     # reorder the array
     kdOrder(kd)

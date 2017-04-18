@@ -36,12 +36,15 @@ dom_mins = np.array([global_min]*3, dtype=np.float64)
 
 tau = 0.2/12600 # 0.2 times mean interparticle separation
 
-ncores = 8
-minblock = 30
-maxblock = 38
+ncores = 576
+minblock = 18
+maxblock = 42
 
 # submit sparkjob
-sj = sparkhpc.sparkjob.SLURMSparkJob(ncores=ncores,cores_per_executor=4, memory_per_executor=50000, walltime='72:00')
+sj = sparkhpc.sparkjob.SLURMSparkJob(ncores=ncores,
+                                     cores_per_executor=8, 
+                                     memory_per_executor=50000, 
+                                     walltime='72:00')
 sj.wait_to_start()
 
 # wait for the job to get set up
@@ -49,7 +52,7 @@ time.sleep(30)
 
 # initialize sparkContext
 sc = sparkhpc.start_spark(master=sj.master_url, spark_conf='../conf', 
-                          profiling=False, executor_memory='12000M', graphframes_package='graphframes:graphframes:0.3.0-spark2.0-s_2.11')
+                          profiling=False, executor_memory='24000M', graphframes_package='graphframes:graphframes:0.3.0-spark2.0-s_2.11')
 
 sc.setCheckpointDir('file:///zbox/data/roskar/checkpoint')
 #sc.setCheckpointDir('file:///cluster/home/roskarr/work/euclid')
@@ -75,12 +78,12 @@ print '--------------------'
 nMinMembers = 8
 nBins = 62
 fof_analyzer = spark_fof.spark_fof.LCFOFAnalyzer(sc, path, nMinMembers, nBins, tau, dom_mins, dom_maxs, blockids=range(minblock,maxblock), buffer_tau=tau*2)
-ngroups = len(fof_analyzer.groups)
+
+fof_analyzer.finalize_groups()
 
 t = time.localtime()
 print '--------------------'
 print 'spark-fof finished at {t.tm_hour:02}:{t.tm_min:02}:{t.tm_sec:02}'.format(t=t)
-print 'Number of groups: %d'%ngroups
 print 'cores: %d\tblocks: %d\ttime elapsed: %f'%(ncores, (maxblock-minblock)**3, time.time()-timein)
 
 sc.stop()
