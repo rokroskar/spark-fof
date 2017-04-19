@@ -37,6 +37,7 @@ cdef kdFinish(cfof.KD kd):
 #
 # cython functions for working with kd/fof
 #
+
 cdef populate_arrays(cfof.KD kd, np.ndarray[cfof.PARTICLE] particles):
     cdef cfof.PARTICLE[:] parr = particles
 
@@ -89,8 +90,5 @@ cpdef int run(np.ndarray[cfof.PARTICLE] particles, float fEps, int nMembers):
     # eliminate small groups
     if nMembers > 1:
         nGroup = kdTooSmall(kd, nMembers)    
-
-    # reorder the array
-    kdOrder(kd)
 
     return nGroup

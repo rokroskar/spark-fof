@@ -1,8 +1,8 @@
 #
 # Makefile for fof.
 #
-CFLAGS	=	-O2 -fPIC
-LIBS	=   -lm
+CFLAGS	= -O3 -fPIC
+LIBS	= -lm
 
 default: lib clean
 

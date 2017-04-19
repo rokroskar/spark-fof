@@ -93,6 +93,7 @@ class FOFAnalyzer(object):
         self._fof_rdd = None
         self._merged_rdd = None
         self._final_fof_rdd = None
+        self._groups_rdd = None
         self._groups = None
 
 
@@ -122,17 +123,26 @@ class FOFAnalyzer(object):
     @property
     def final_fof_rdd(self):
         if self._final_fof_rdd is None: 
-            self._final_fof_rdd = self.finalize_groups()
+            self._final_fof_rdd = self.remap_particle_rdd()
         return self._final_fof_rdd
 
     
     @property
-    def groups(self):
-        if self._groups is None: 
-            self.final_fof_rdd
-        return self._groups
+    def groups_rdd(self):
+        if self._groups_rdd is None: 
+            self._groups_rdd = self.finalize_groups()
+        return self._groups_rdd
 
+    @property
+    def groups(self): 
+        if self._groups is None: 
+            self._groups = self.collect_final_groups()
+        return self._groups
     
+    def filter_ghosts(self, rdd): 
+        """Filter out copied ghost particles from the particle arrays in the RDD"""
+        return rdd.map(lambda p: p[np.where(p['is_ghost'] != GHOST_PARTICLE_COPY)[0]], True)
+
     def run_all(self): 
         """
         Run FOF, merge the groups across domains and finalize the group IDs,
@@ -219,41 +229,14 @@ class FOFAnalyzer(object):
         First does a partitioning step to put particles in their respective domain containers
         """
         tau = self.tau
-        import os
-
-        def run_local_fof(partition_index, particle_iter, tau, nMinMembers, batch_size=1024*10240, DEBUG=False): 
-            """Helper function to run FOF locally on the individual partitions"""
-            part_arr = np.concatenate(list(particle_iter))
-            if len(part_arr)>0:
-                tin = time.time()
-                t = time.localtime()
-                print 'spark_fof: starting fof at {time}, pid={pid}'.format(part=partition_index,t=t, time=time.time(), pid=os.getpid())
-                # run fof_rdd
-                tin = time.time()
-                part_arr.sort(kind='mergesort', order='iOrder')
-                print 'spark_fof: sorting took %f seconds'%(time.time()-tin)
-                
-                fof.run(part_arr, tau, nMinMembers)
-                print 'spark_fof: finished fof at {time}, pid={pid}'.format(part=partition_index, time=time.time(), pid=os.getpid())
-
-                if DEBUG:
-                    for i in range(100): 
-                        print 'spark_fof DEBUG: %d %d'%(part_arr['iOrder'][i], part_arr['iGroup'][i])
-
-                # encode the groupID  
-                spark_fof_c.encode_gid(part_arr, partition_index)
-                if DEBUG: print 'spark_fof DEBUG: total number of groups in partition %d: %d'%(partition_index, len(np.unique(part_arr['iGroup'])))
-                
-               
-
-            for arr in np.split(part_arr, range(batch_size,len(part_arr),batch_size)):
-                yield arr
-
+       
         partitioned_rdd = self.partitioned_rdd
 
         fof_rdd = partitioned_rdd.mapPartitionsWithIndex(lambda index, particles: 
                                                          run_local_fof(index, particles, tau, 1), 
                                                          preservesPartitioning=True)
+
+        # fof_rdd = partitioned_rdd.mapPartitions(concatenate_partition).map(lambda p: fof_map(p,tau,1))
 
         return fof_rdd
 
@@ -356,11 +339,7 @@ class FOFAnalyzer(object):
                 remap_gid_partition_cython(p_arr, gmap)
                 yield p_arr
 
-        def create_map_dict(iterator):
-            group_map_dict = {g:g_p for g,g_p in iterator}
-            yield group_map_dict
-
-        mapping = self._get_level_map().cache()
+        mapping = self._get_level_map()
 
         group_merge_map = (mapping.flatMap(lambda (g,g_p):
                                            [(gid, (g,g_p)) for gid in [decode_partition(g), decode_partition(g_p)]])
@@ -403,6 +382,7 @@ class FOFAnalyzer(object):
             print 'sizeof set in ', i, ' ', asizeof.asizeof(dist_groups)
             p_arrs = np.concatenate([p_arr for p_arr in iterator])
             gids, counts = np.unique(p_arrs['iGroup'], return_counts=True)
+            print 'number of groups in partition ', i, ' = ', len(gids)
             return ((g,cnt) for (g,cnt) in zip(gids, counts) if (g in dist_groups) or (cnt >= nMinMembers))
  
 
@@ -421,7 +401,7 @@ class FOFAnalyzer(object):
             return filter_groups_by_map(map_rdd + rdd, not_in_map=False)
 
         # first, get rid of ghost particles
-        no_ghosts_rdd = merged_rdd.map(lambda p: p[np.where(p['is_ghost'] != GHOST_PARTICLE_COPY)[0]], True)
+        no_ghosts_rdd = self.filter_ghosts(merged_rdd)
 
         # count up the number of particles in each group in each partition
         group_counts = (group_merge_map + no_ghosts_rdd).mapPartitionsWithIndex(lambda index,i: count_groups_local(index, i, nMinMembers), True).cache()
@@ -436,33 +416,78 @@ class FOFAnalyzer(object):
             print 'spark_fof DEBUG: non-merge groups = %d merge groups = %d'%(group_counts.count(), merge_group_counts.count())        
 
         # combine the group counts
-        final_groups = (get_local_groups(group_counts, group_merge_map) + merge_group_counts)
-        total_group_counts = final_groups.count()
+        groups_rdd = (get_local_groups(group_counts, group_merge_map) + merge_group_counts).setName('groups_rdd')
+        total_group_counts = groups_rdd.cache().count()
         
         print 'Total number of groups: ', total_group_counts
 
         self.total_group_counts = total_group_counts
+
+        return groups_rdd
+
+    def collect_final_groups(self):
+        """Collects the final group counts and mapping to the driver"""
+        # get the final group mapping by sorting groups by particle count
+        timein = time.time()
+        groups_map = {}
+        groups = {}
+        groups_rdd = self.groups_rdd
+        for i, (g,c) in enumerate(groups_rdd.collect()): 
+            groups_map[g] = i+1
+            groups[i+1] = c
+
+        print 'spark_fof: Final group map build took %f seconds'%(time.time() - timein)
+            
+        return groups
+
+
+    def remap_particle_rdd(self): 
+        merged_rdd = self.merged_rdd
+        nPartitions = self.sc.defaultParallelism
+        group_mapping = self.group_mapping
+
+        # creeate a global group mapping
+        group_index_mapping = self.groups_rdd.zipWithIndex().map(lambda ((gid,count), new_gid): (gid, new_gid+1))
+
+        # create a mapping of each group to partition(s) 
+        # a single group could map to more than one partition if it was used to link together groups across domains
+        group_partition_mapping = group_mapping.map(lambda (k,v): (v,decode_partition(k))).groupByKey()
+
+        # join the two above maps together creating a global groupID --> partition map
+        map_join = group_index_mapping.leftOuterJoin(group_partition_mapping)
+
+        # create one dictionary per partition mapping each group in the partition to a global group index
+        final_particle_mapping = (map_join.flatMap(flatten_group_partition_map)
+                                  .partitionBy(nPartitions).map(lambda (k,v): v, True)
+                                  .mapPartitions(create_map_dict, True))
+
+        # helper function for remapping the group IDs in each partition
+        def remap_group_ids(iterator): 
+            # the group mapping is the first item in the partition
+            mapping = iterator.next()
+            
+            for p_arr in iterator: 
+                relabel_groups(p_arr, mapping)
+                yield p_arr
         
-        # # get the final group mapping by sorting groups by particle count
-        #timein = time.time()
-        # groups_map = {}
-        # self._groups = {}
-        # for i, (g,c) in enumerate(final_groups.toLocalIterator()): 
-        #     groups_map[g] = i+1
-        #     self._groups[i+1] = c
+        # we only keep the particles that are not ghost copies        
+        no_ghosts_rdd = self.filter_ghosts(merged_rdd)
 
-        # print 'spark_fof: Final group map build took %f seconds'%(time.time() - timein)
-        # groups_map_b = sc.broadcast(groups_map)
+        # create the final RDD adding in the partition group map and using it to remap the group IDs
+        final_fof_rdd = (final_particle_mapping + no_ghosts_rdd).mapPartitions(remap_group_ids, True)
 
-        # final_fof_rdd = no_ghosts_rdd.map(lambda p_arr: relabel_groups_wrapper(p_arr, groups_map_b.value))
-
-        # return final_fof_rdd
+        return final_fof_rdd
 
 
     def get_bin(pos):
         nbins, mins, maxs = self.nBins, self.dom_mins, self.dom_maxs
         return spark_fof_c.get_bin_wrapper(pos, nbins, mins, maxs)
 
+
+
+##################
+# Helper functions
+##################
 
 def pid_gid(p):
     """Map the particle to its pid and gid"""
@@ -478,6 +503,35 @@ def decode_partition(gid):
 
 def decode_group(gid):
     return decode(gid)[1]
+
+
+def create_map_dict(iterator):
+            group_map_dict = {g:g_p for g,g_p in iterator}
+            yield group_map_dict
+
+def run_local_fof(partition_index, particle_iter, tau, nMinMembers, batch_size=1024*10240, DEBUG=False): 
+    """Helper function to run FOF locally on the individual partitions"""
+    part_arr = np.concatenate(list(particle_iter))
+    if len(part_arr)>0:
+        t = time.localtime()
+        print 'spark_fof: starting fof at {time}, pid={pid}'.format(part=partition_index,t=t, time=time.time(), pid=os.getpid())
+        
+        # run fof_rdd
+        fof.run(part_arr, tau, nMinMembers)
+        print 'spark_fof: finished fof at {time}, pid={pid}'.format(part=partition_index, time=time.time(), pid=os.getpid())
+
+        # encode the groupID  
+        spark_fof_c.encode_gid(part_arr, partition_index)
+        
+    for arr in np.split(part_arr, range(batch_size,len(part_arr),batch_size)):
+        yield arr
+
+def flatten_group_partition_map(args):
+    g, (g_p, partitions) = args
+    if partitions is None: 
+        return [(decode_partition(g), (g, g_p)),]
+    else: 
+        return [(partition, (g, g_p)) for partition in list(partitions) + [decode_partition(g),]]
 
 
 class dictAdd(AccumulatorParam):

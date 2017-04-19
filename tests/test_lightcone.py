@@ -4,7 +4,8 @@ from sparkhpc import sparkjob
 import numpy as np
 
 # set up all parameters
-path = '/cluster/home/roskarr/projects/euclid/2Tlc-final/'
+#path = '/cluster/home/roskarr/projects/euclid/2Tlc-final/'
+path = '/zbox/trove/euclid/2Tlc-final/'
 
 # domain parameters
 diff = np.float32(0.03306878)
@@ -52,7 +53,8 @@ def test_lightcone_file_read(lightcone_analyzer, group_counts):
 
 def test_group_count(lightcone_analyzer, group_counts): 
     """Check that we have the correct number of groups at the end"""
-    assert(len(lightcone_analyzer.groups) == len(group_counts)-1)
+    lightcone_analyzer.finalize_groups()
+    assert(lightcone_analyzer.total_group_counts == len(group_counts)-1)
 
 def test_detailed_particle_counts(lightcone_analyzer, group_counts):
     """Test that the number of groups per particle count is correct"""

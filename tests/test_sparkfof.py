@@ -86,7 +86,7 @@ tau = 7.8125e-4
 mins = np.array([-.5,-.5,-.5])
 maxs = np.array([.5,.5,.5])
 N = 2
-filename = '/cluster/home/roskarr/work/euclid-test-files/euclid256.nat_no_header'
+filename = './testdata/euclid256.nat_no_header'
 
 
 @pytest.fixture(params=[1,8])
@@ -152,7 +152,8 @@ def test_ghost_partitioning(tipsy_analyzer_single):
 
 def test_group_count(tipsy_analyzer): 
     """Check that we have the correct number of groups at the end"""
-    assert(len(tipsy_analyzer.groups) == correct_groups[tipsy_analyzer.nMinMembers])
+    groups = tipsy_analyzer.groups
+    assert(len(groups) == correct_groups[tipsy_analyzer.nMinMembers])
 
 
 def test_singlecore_fof(ps_fof, tipsy_analyzer):
@@ -166,10 +167,10 @@ def test_detailed_particle_counts(ps_fof, tipsy_analyzer):
     group_count_counts = np.bincount(np.bincount(ps_fof['iGroup'])[1:])
     
     # trigger the full calculation in case it hasn't been done
-    tipsy_analyzer.groups
+    groups = tipsy_analyzer.groups
 
     # get the count of group counts from the spark fof
-    group_count_arr = np.array([y for x,y in tipsy_analyzer.total_group_counts])
+    group_count_arr = np.array([y for x,y in groups.iteritems()])
     group_count_counts2 = np.bincount(group_count_arr)
 
     assert(np.all(group_count_counts2 == group_count_counts))

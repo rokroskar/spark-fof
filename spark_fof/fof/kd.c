@@ -5,23 +5,8 @@
 #include <sys/resource.h>
 #include <assert.h>
 #include <rpc/types.h>
-#include <rpc/xdr.h>
 #include "kd.h"
 #include "tipsydefs.h"
-
-int xdrHeader(XDR *pxdrs,struct dump *ph)
-{
-	int pad = 0;
-	
-	if (!xdr_double(pxdrs,&ph->time)) return 0;
-	if (!xdr_int(pxdrs,&ph->nbodies)) return 0;
-	if (!xdr_int(pxdrs,&ph->ndim)) return 0;
-	if (!xdr_int(pxdrs,&ph->nsph)) return 0;
-	if (!xdr_int(pxdrs,&ph->ndark)) return 0;
-	if (!xdr_int(pxdrs,&ph->nstar)) return 0;
-	if (!xdr_int(pxdrs,&pad)) return 0;
-	return 1;
-	}
 
 void kdTime(KD kd,int *puSecond,int *puMicro)
 {
@@ -368,7 +353,7 @@ int CmpParticles(const void *v1,const void *v2)
 void kdOrder(KD kd)
 {
 	qsort(kd->p,kd->nActive,sizeof(PARTICLE),CmpParticles);
-	}
+    }
 
 
 void kdFinish(KD kd)

@@ -21,8 +21,8 @@ def sc_local():
     time.sleep(30)
 
     sc = sparkhpc.start_spark(master='local[4]')
-    sc.setCheckpointDir('file:///cluster/home/roskarr/work/euclid')
-    
+   # sc.setCheckpointDir('file:///cluster/home/roskarr/work/euclid')
+    sc.setCheckpointDir('file:///zbox/data/roskar/work/checkpoint')
     yield sc
 
     sc.stop()
@@ -44,21 +44,24 @@ def sc_distributed(request):
     clusterid = request.config.getoption('--clusterid')
 
     if clusterid is not None: 
-        sj = sparkjob.LSFSparkJob(clusterid=int(clusterid))
+        sj = sparkjob.sparkjob(clusterid=int(clusterid))
     else:
-        sj = sparkjob.LSFSparkJob(ncores=ncores,
-                                  memory=12000,
+        sj = sparkjob.sparkjob(ncores=ncores,
+                                  memory=50000,
                                   walltime='02:00', 
-                                  template=os.path.join(os.path.dirname(os.path.abspath(__file__)),'../run_scripts/job.template'))
+                                  cores_per_executor=4,
+                                  memory_per_executor=50000)
+
         sj.wait_to_start()
         time.sleep(30)
 
     sc = sparkhpc.start_spark(master=sj.master_url, spark_conf='../conf', 
-                              profiling=False, executor_memory='6000M', 
+                              profiling=False, executor_memory='20000M', 
                               graphframes_package='graphframes:graphframes:0.3.0-spark2.0-s_2.11')
 
-    sc.setCheckpointDir('file:///cluster/home/roskarr/work/euclid')
-    
+    #sc.setCheckpointDir('file:///cluster/home/roskarr/work/euclid')
+    sc.setCheckpointDir('file:///zbox/data/roskar/work/checkpoint')
+
     yield sc
 
     sc.stop()
