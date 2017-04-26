@@ -8,7 +8,9 @@
 print 'RUNNING SPARK_FOF'
 
 import os
-os.environ['SPARK_HOME'] = os.path.join(os.path.expanduser('~'), 'spark')
+#os.environ['SPARK_HOME'] = os.path.join(os.path.expanduser('~'), 'spark')
+os.environ['JAVA_HOME'] = '/home/ics/roskar/data/src/jdk1.8.0_131'
+os.environ['SPARK_HOME'] = '/home/ics/roskar/data/src/spark2'
 import findspark
 findspark.init()
 
@@ -36,23 +38,28 @@ dom_mins = np.array([global_min]*3, dtype=np.float64)
 
 tau = 0.2/12600 # 0.2 times mean interparticle separation
 
+memory_per_node = 64000
+cores_per_executor = 8
+memory_per_core = memory_per_node/cores_per_executor - memory_per_node/cores_per_executor%1000
 ncores = 576
 minblock = 18
 maxblock = 42
 
 # submit sparkjob
-sj = sparkhpc.sparkjob.SLURMSparkJob(ncores=ncores,
-                                     cores_per_executor=8, 
-                                     memory_per_executor=50000, 
-                                     walltime='72:00')
+sj = sparkhpc.sparkjob.sparkjob(ncores=ncores,
+                                cores_per_executor=cores_per_executor, 
+                                memory_per_executor=16000, 
+                                memory_per_core=memory_per_core,
+                                walltime='72:00')
+
 sj.wait_to_start()
 
+print 'cluster started'
 # wait for the job to get set up
 time.sleep(30)
 
 # initialize sparkContext
-sc = sparkhpc.start_spark(master=sj.master_url, spark_conf='../conf', 
-                          profiling=False, executor_memory='16000M', graphframes_package='graphframes:graphframes:0.3.0-spark2.0-s_2.11')
+sc = sj.start_spark(spark_conf='../conf')
 
 sc.setCheckpointDir('file:///zbox/data/roskar/checkpoint')
 #sc.setCheckpointDir('file:///cluster/home/roskarr/work/euclid')

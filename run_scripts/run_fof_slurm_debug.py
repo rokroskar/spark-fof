@@ -8,7 +8,8 @@
 print 'RUNNING SPARK_FOF'
 
 import os
-os.environ['SPARK_HOME'] = os.path.join(os.path.expanduser('~'), 'spark')
+#os.environ['SPARK_HOME'] = os.path.join(os.path.expanduser('~'), 'spark')
+os.environ['SPARK_HOME'] = '/home/ics/roskar/data/src/spark2'
 import findspark
 findspark.init()
 
@@ -36,13 +37,13 @@ dom_mins = np.array([global_min]*3, dtype=np.float64)
 
 tau = 0.2/12600 # 0.2 times mean interparticle separation
 
-ncores = 8
+ncores = 64
 minblock = 30
-maxblock = 32
+maxblock = 34
 
 # submit sparkjob
 sj = sparkhpc.sparkjob.SLURMSparkJob(ncores=ncores,
-                                     cores_per_executor=4, 
+                                     cores_per_executor=4,
                                      memory_per_executor=50000, 
                                      walltime='72:00')
 sj.wait_to_start()
@@ -51,8 +52,7 @@ sj.wait_to_start()
 time.sleep(30)
 
 # initialize sparkContext
-sc = sparkhpc.start_spark(master=sj.master_url, spark_conf='../conf', 
-                          profiling=False, executor_memory='20000M', graphframes_package='graphframes:graphframes:0.3.0-spark2.0-s_2.11')
+sc = sj.start_spark(spark_conf='../conf')
 
 sc.setCheckpointDir('file:///zbox/data/roskar/checkpoint')
 #sc.setCheckpointDir('file:///cluster/home/roskarr/work/euclid')
