@@ -4,6 +4,7 @@
 #SBATCH -o spark-fof-driver-%J.log
 #SBATCH -n 1
 #SBATCH --mem-per-cpu=20000
+#SBATCH -x x09y[01-12]
 
 print 'RUNNING SPARK_FOF'
 
@@ -50,7 +51,8 @@ sj = sparkhpc.sparkjob.sparkjob(ncores=ncores,
                                 cores_per_executor=cores_per_executor, 
                                 memory_per_executor=16000, 
                                 memory_per_core=memory_per_core,
-                                walltime='72:00')
+                                walltime='72:00',
+                                template='sparkjob.slurm.template')
 
 sj.wait_to_start()
 

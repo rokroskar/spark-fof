@@ -37,9 +37,9 @@ dom_mins = np.array([global_min]*3, dtype=np.float64)
 
 tau = 0.2/12600 # 0.2 times mean interparticle separation
 
-ncores = 64
+ncores = 216
 minblock = 30
-maxblock = 34
+maxblock = 36
 
 # submit sparkjob
 sj = sparkhpc.sparkjob.SLURMSparkJob(ncores=ncores,
